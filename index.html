@@ -192,6 +192,7 @@
       <div class="sync-pill" id="syncPill"><span class="dot"></span><span id="syncText">লোড হচ্ছে...</span></div>
       <button class="btn" id="adminBtn">এডমিন ভিউ</button>
       <button class="btn" id="switchBtn">অ্যাকাউন্ট পরিবর্তন</button>
+      <button class="btn" id="showUidBtn">UID দেখুন</button>
     </div>
   </header>
 
@@ -349,6 +350,10 @@ document.getElementById('switchBtn').addEventListener('click', ()=>{
     localStorage.removeItem('hsc-group-student-name');
     location.reload();
   }
+});
+
+document.getElementById('showUidBtn').addEventListener('click', ()=>{
+  alert('আমার Firebase UID:\n\n' + myId + '\n\nএটা কপি করে Firebase Rules-এ বসাও।');
 });
 
 function startSync(){
