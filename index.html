@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HSC 2027 বিজ্ঞান বিভাগ গ্রুপ ট্র্যাকার</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+Bengali:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<!-- ====================================================================
+  SETUP INSTRUCTIONS (একবার করতে হবে):
+
+  ধাপ ১-৪: প্রজেক্ট ও কনফিগ
+  1. https://console.firebase.google.com -এ যান, নতুন প্রজেক্ট বানান (ফ্রি)
+  2. বাম মেনু থেকে Build > Realtime Database > Create Database (যেকোনো Location, "Start in test mode")
+  3. Build > Authentication > Get Started > Sign-in method ট্যাবে "Anonymous" চালু (Enable) করুন
+  4. প্রজেক্ট Settings (⚙️) > General > "Add app" > Web (</>) — যে firebaseConfig পাবেন সেটা নিচের
+     FIREBASE_CONFIG-এ বসান, এবং ADMIN_PASSCODE বদলে নিজের পাসকোড দিন
+
+  ধাপ ৫-৭: নিজের UID বের করে এডমিন অ্যাক্সেস সেট করা (তোমার একজনের জন্যই লাগবে)
+  5. FIREBASE_CONFIG বসিয়ে এই ফাইলটা একবার নিজের ব্রাউজারে খুলুন, নাম দিয়ে ঢুকুন
+  6. ব্রাউজারে Developer Tools (F12) > Console ট্যাবে খুলুন — সেখানে "My Firebase UID: xxxxx" লেখা একটা
+     লাইন দেখতে পাবেন, সেই UID-টুকু কপি করে রাখুন
+  7. Firebase Console > Realtime Database > Rules ট্যাবে গিয়ে নিচের rules বসান
+     (YOUR_UID_HERE এর জায়গায় ৬ নং ধাপের UID বসিয়ে) এবং Publish করুন:
+
+     {
+       "rules": {
+         "students": {
+           "$uid": {
+             ".read": "auth != null && ($uid === auth.uid || auth.uid === 'YOUR_UID_HERE')",
+             ".write": "auth != null && $uid === auth.uid"
+           }
+         }
+       }
+     }
+
+     এর ফলে প্রত্যেকে শুধু নিজের ডেটা read/write করতে পারবে, আর শুধু তোমার (YOUR_UID_HERE) অ্যাকাউন্ট
+     থেকে এডমিন ভিউতে সবার ডেটা read করা যাবে। কেউ চাইলেও ব্রাউজার কনসোল থেকে অন্যের ডেটা দেখতে/বদলাতে
+     পারবে না — এটা Firebase নিজেই আটকে দেবে।
+  8. ফাইলটা GitHub Pages-এ পুশ করুন — সবাই একই লিংক ব্যবহার করবে
+==================================================================== -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+<style>
+  :root{
+    --bg:#0a121f; --bg2:#0d1626; --grid:rgba(120,175,255,0.07);
+    --panel:#111e33; --panel2:#0e1a2c; --border:#1c3050;
+    --ink:#dfeaf7; --muted:#7d93b3;
+    --physics:#5ec8ff; --chemistry:#ffb454; --biology:#6cd67a;
+    --math:#c792ea; --bangla:#ff8ba7; --english:#7ee0d0; --ict:#f0e15a;
+    --done:#57e389; --warn:#ff6b6b;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{background:var(--bg); color:var(--ink); font-family:'Inter','Noto Sans Bengali',sans-serif; min-height:100%;}
+  body{
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px),
+      radial-gradient(ellipse at top, var(--bg2), var(--bg) 60%);
+    background-size: 34px 34px, 34px 34px, 100% 100%;
+    padding-bottom:60px;
+  }
+  h1,h2,h3{font-family:'Space Grotesk','Noto Sans Bengali',sans-serif;}
+  .mono{font-family:'JetBrains Mono', monospace;}
+  .wrap{max-width:960px; margin:0 auto; padding:28px 18px 0;}
+
+  header.top{
+    display:flex; flex-wrap:wrap; gap:20px; align-items:center; justify-content:space-between;
+    border-bottom:1px solid var(--border); padding-bottom:22px; margin-bottom:24px;
+  }
+  .id-block .tag{
+    font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:0.18em; color:var(--physics);
+    text-transform:uppercase; margin-bottom:6px; display:block;
+  }
+  .id-block h1{font-size:clamp(20px,4vw,28px); font-weight:700;}
+  .id-block .sub{color:var(--muted); font-size:13px; margin-top:4px;}
+  .sync-pill{
+    font-family:'JetBrains Mono',monospace; font-size:11px; padding:5px 10px; border-radius:20px;
+    border:1px solid var(--border); color:var(--muted); display:flex; align-items:center; gap:6px;
+  }
+  .sync-pill .dot{width:7px; height:7px; border-radius:50%; background:var(--muted);}
+  .sync-pill.ok .dot{background:var(--done);}
+  .sync-pill.busy .dot{background:var(--chemistry);}
+  .sync-pill.err .dot{background:var(--warn);}
+
+  .top-actions{display:flex; gap:8px; align-items:center;}
+  .btn{
+    background:var(--panel); border:1px solid var(--border); color:var(--ink); padding:8px 14px;
+    border-radius:7px; font-size:12.5px; cursor:pointer; font-weight:500;
+  }
+  .btn.warn{color:var(--warn); border-color:var(--warn);}
+  .btn.primary{background:var(--physics); color:#0a121f; border-color:var(--physics); font-weight:600;}
+
+  .gauge-row{display:flex; gap:28px; align-items:center; flex-wrap:wrap; margin-bottom:30px;}
+  .gauge{position:relative; width:140px; height:140px; flex-shrink:0;}
+  .gauge svg{transform:rotate(-90deg);}
+  .gauge .bgring{fill:none; stroke:var(--border); stroke-width:10;}
+  .gauge .fgring{fill:none; stroke:var(--physics); stroke-width:10; stroke-linecap:round; transition:stroke-dashoffset 0.6s ease;}
+  .gauge .center{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;}
+  .gauge .pct{font-size:28px; font-weight:700; font-family:'JetBrains Mono',monospace;}
+  .gauge .pct-lbl{font-size:10px; color:var(--muted); letter-spacing:0.1em; text-transform:uppercase;}
+  .status-block{flex:1; min-width:200px;}
+  .status-block .status-title{font-size:17px; font-weight:600; margin-bottom:6px;}
+  .status-block .status-desc{color:var(--muted); font-size:13px; line-height:1.5;}
+
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:14px;}
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:10px; overflow:hidden;}
+  .card .head{display:flex; align-items:center; gap:12px; padding:14px 16px; cursor:pointer; border-left:4px solid var(--sub-color, var(--physics));}
+  .card .symbol{width:38px; height:38px; border-radius:8px; display:flex; align-items:center; justify-content:center;
+    background:color-mix(in srgb, var(--sub-color) 18%, transparent); color:var(--sub-color);
+    font-family:'JetBrains Mono',monospace; font-weight:700; font-size:14px; flex-shrink:0;}
+  .card .titles{flex:1; min-width:0;}
+  .card .titles .name{font-weight:600; font-size:14.5px;}
+  .card .titles .count{color:var(--muted); font-size:11.5px; margin-top:2px; font-family:'JetBrains Mono',monospace;}
+  .card .pct{font-family:'JetBrains Mono',monospace; font-weight:700; font-size:15px; color:var(--sub-color); flex-shrink:0;}
+  .card .chev{color:var(--muted); transition:transform 0.25s ease; flex-shrink:0;}
+  .card.open .chev{transform:rotate(180deg);}
+  .card .mini-bar{height:3px; background:var(--panel2);}
+  .card .mini-fill{height:100%; background:var(--sub-color);}
+  .card .body{display:none; padding:6px 14px 14px; border-top:1px solid var(--border);}
+  .card.open .body{display:block;}
+  .chapter{display:flex; align-items:center; gap:10px; padding:8px 4px; border-bottom:1px dashed var(--border);}
+  .chapter:last-of-type{border-bottom:none;}
+  .chapter input[type=checkbox]{width:18px; height:18px; accent-color:var(--sub-color); flex-shrink:0; cursor:pointer;}
+  .chapter .cname{flex:1; font-size:13.5px; line-height:1.4;}
+  .chapter.done .cname{color:var(--muted); text-decoration:line-through;}
+  .chapter .del{background:none; border:none; color:var(--muted); cursor:pointer; font-size:15px; padding:2px 6px; flex-shrink:0;}
+  .chapter .del:hover{color:var(--warn);}
+  .add-row{display:flex; gap:8px; margin-top:10px;}
+  .add-row input{flex:1; background:var(--panel2); border:1px solid var(--border); color:var(--ink); padding:8px 10px; border-radius:6px; font-size:13px;}
+  .add-row button{background:var(--sub-color); color:#0a121f; border:none; border-radius:6px; padding:8px 14px; font-weight:600; font-size:13px; cursor:pointer; flex-shrink:0;}
+
+  footer{max-width:960px; margin:38px auto 0; padding:20px 18px 0; border-top:1px solid var(--border);
+    display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px;}
+  .credit{color:var(--muted); font-size:12.5px; font-family:'JetBrains Mono',monospace;}
+
+  /* Modal */
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(5,10,18,0.85); display:flex; align-items:center; justify-content:center;
+    z-index:100; padding:20px;
+  }
+  .modal{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:26px; max-width:380px; width:100%;}
+  .modal h2{font-size:19px; margin-bottom:8px;}
+  .modal p{color:var(--muted); font-size:13.5px; margin-bottom:16px; line-height:1.5;}
+  .modal input{width:100%; background:var(--panel2); border:1px solid var(--border); color:var(--ink);
+    padding:10px 12px; border-radius:7px; font-size:14px; margin-bottom:12px;}
+  .modal .btn.primary{width:100%; padding:11px; font-size:14px;}
+
+  /* Admin panel */
+  #adminPanel{display:none;}
+  #adminPanel.open{display:block;}
+  .admin-row{
+    display:grid; grid-template-columns:1.4fr 0.6fr 2fr; gap:12px; align-items:center;
+    padding:12px 14px; border-bottom:1px solid var(--border); font-size:13px;
+  }
+  .admin-row.header-row{color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:0.08em;}
+  .admin-name{font-weight:600;}
+  .admin-updated{color:var(--muted); font-size:11px; font-family:'JetBrains Mono',monospace;}
+  .admin-bar-wrap{background:var(--panel2); border-radius:4px; height:8px; overflow:hidden; border:1px solid var(--border);}
+  .admin-bar-fill{height:100%; background:linear-gradient(90deg,var(--physics),var(--done));}
+  .admin-pct{font-family:'JetBrains Mono',monospace; font-weight:700; text-align:right;}
+
+  @media (max-width:520px){
+    header.top{justify-content:center; text-align:center;}
+    .gauge-row{flex-direction:column; text-align:center;}
+    .admin-row{grid-template-columns:1fr; gap:4px;}
+  }
+</style>
+</head>
+<body>
+
+<div id="nameModal" class="modal-overlay">
+  <div class="modal">
+    <h2>স্বাগতম 👋</h2>
+    <p>গ্রুপ ট্র্যাকারে তোমার প্রগ্রেস আলাদাভাবে সেভ হবে। শুরুতে তোমার নাম লিখো (একবারই লাগবে, পরের বার এই ডিভাইসে অটো লগইন হয়ে যাবে)।</p>
+    <input type="text" id="nameInput" placeholder="তোমার নাম লিখো">
+    <button class="btn primary" id="nameSubmit">শুরু করি</button>
+  </div>
+</div>
+
+<div class="wrap">
+  <header class="top">
+    <div class="id-block">
+      <span class="tag">HSC · 2027 · Science Group</span>
+      <h1 id="studentNameDisplay">—</h1>
+      <div class="sub">গ্রুপ স্টাডি সিলেবাস ট্র্যাকার</div>
+    </div>
+    <div class="top-actions">
+      <div class="sync-pill" id="syncPill"><span class="dot"></span><span id="syncText">লোড হচ্ছে...</span></div>
+      <button class="btn" id="adminBtn">এডমিন ভিউ</button>
+      <button class="btn" id="switchBtn">অ্যাকাউন্ট পরিবর্তন</button>
+    </div>
+  </header>
+
+  <div id="mainView">
+    <div class="gauge-row">
+      <div class="gauge">
+        <svg width="140" height="140" viewBox="0 0 140 140">
+          <circle class="bgring" cx="70" cy="70" r="60"></circle>
+          <circle class="fgring" id="ringFg" cx="70" cy="70" r="60" stroke-dasharray="377" stroke-dashoffset="377"></circle>
+        </svg>
+        <div class="center">
+          <div class="pct mono" id="overallPct">0%</div>
+          <div class="pct-lbl">সম্পন্ন</div>
+        </div>
+      </div>
+      <div class="status-block">
+        <div class="status-title" id="statusTitle">প্রস্তুতি শুরু হয়নি</div>
+        <div class="status-desc" id="statusDesc">প্রতিটি সাবজেক্ট খুলে অধ্যায়গুলো চেক করা শুরু করুন।</div>
+      </div>
+    </div>
+
+    <div class="grid" id="subjectGrid"></div>
+  </div>
+
+  <div id="adminPanel">
+    <h2 style="font-size:20px; margin-bottom:4px;">গ্রুপ ওভারভিউ</h2>
+    <p style="color:var(--muted); font-size:13px; margin-bottom:16px;">সবার সামগ্রিক অগ্রগতি — রিয়েল-টাইমে আপডেট হয়</p>
+    <div style="background:var(--panel); border:1px solid var(--border); border-radius:10px; overflow:hidden;">
+      <div class="admin-row header-row"><div>নাম</div><div>%</div><div>প্রগ্রেস</div></div>
+      <div id="adminList"></div>
+    </div>
+  </div>
+
+  <footer>
+    <div class="credit">Group Study Tracker · HSC 2027</div>
+    <button class="btn warn" id="resetBtn">আমার প্রগ্রেস রিসেট</button>
+  </footer>
+</div>
+
+<script>
+// ====================== FILL THIS IN (see setup instructions above) ======================
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBSysmtAIXYuNq44_zOR1agAhYtS-Wjv60",
+  authDomain: "hsc-2027-tracker.firebaseapp.com",
+  databaseURL: "https://hsc-2027-tracker-default-rtdb.firebaseio.com",
+  projectId: "hsc-2027-tracker",
+};
+const ADMIN_PASSCODE = "abid2027"; // <-- চাইলে বদলে নিজের পাসকোড দিন
+// ===========================================================================================
+
+firebase.initializeApp(FIREBASE_CONFIG);
+const db = firebase.database();
+
+const DEFAULT_SUBJECTS = [
+  {id:'physics1', name:'পদার্থবিজ্ঞান ১ম পত্র', symbol:'Ph₁', color:'var(--physics)', chapters:[
+    'ভৌতজগৎ ও পরিমাপ','ভেক্টর','গতিবিদ্যা','নিউটনিয়ান বলবিদ্যা','কাজ, ক্ষমতা ও শক্তি',
+    'মহাকর্ষ ও অভিকর্ষ','পদার্থের গাঠনিক ধর্ম','পর্যায়বৃত্ত গতি','তরঙ্গ'
+  ]},
+  {id:'physics2', name:'পদার্থবিজ্ঞান ২য় পত্র', symbol:'Ph₂', color:'var(--physics)', chapters:[
+    'তাপগতিবিদ্যা','স্থির তড়িৎ','চল তড়িৎ','তড়িৎ প্রবাহের চৌম্বক ক্রিয়া','তড়িৎচুম্বকীয় আবেশ',
+    'জ্যামিতিক আলোকবিজ্ঞান','ভৌত আলোকবিজ্ঞান','আধুনিক পদার্থবিজ্ঞান','সেমিকন্ডাক্টর ও ইলেকট্রনিক্স'
+  ]},
+  {id:'chem1', name:'রসায়ন ১ম পত্র', symbol:'Ch₁', color:'var(--chemistry)', chapters:[
+    'ল্যাবরেটরির নিরাপদ ব্যবহার','গুণগত রসায়ন','মৌলের পর্যায়বৃত্ত ধর্ম ও রাসায়নিক বন্ধন',
+    'রাসায়নিক পরিবর্তন','কর্মমুখী রসায়ন'
+  ]},
+  {id:'chem2', name:'রসায়ন ২য় পত্র', symbol:'Ch₂', color:'var(--chemistry)', chapters:[
+    'পরিবেশ রসায়ন','জৈব রসায়ন','পরিমাণগত রসায়ন','তড়িৎ রসায়ন','অর্থনৈতিক রসায়ন'
+  ]},
+  {id:'bio1', name:'জীববিজ্ঞান ১ম পত্র', symbol:'Bi₁', color:'var(--biology)', chapters:[
+    'কোষ ও এর গঠন','কোষ বিভাজন','কোষ রসায়ন','ব্যাক্টেরিয়া ও ভাইরাস','শৈবাল ও ছত্রাক',
+    'ব্রায়োফাইটা ও টেরিডোফাইটা','অনাবৃতবীজী ও আবৃতবীজী উদ্ভিদ','টিস্যু ও টিস্যুতন্ত্র',
+    'উদ্ভিদ শারীরতত্ত্ব','জীবপ্রযুক্তি'
+  ]},
+  {id:'bio2', name:'জীববিজ্ঞান ২য় পত্র', symbol:'Bi₂', color:'var(--biology)', chapters:[
+    'প্রাণীর বিভিন্নতা ও শ্রেণীবিন্যাস','প্রাণী সংগঠন: টিস্যু','পরিফেরা থেকে একাইনোডার্মাটা',
+    'হেমিকর্ডাটা ও কর্ডাটা','পরিপাক ও শোষণ','রক্ত ও সঞ্চালন','শ্বসন ও শ্বাসক্রিয়া',
+    'বর্জ্য ও নিষ্কাশন','চলন ও অঙ্গচালনা','সমন্বয়','জিন প্রকৌশল ও জীবপ্রযুক্তি'
+  ]},
+  {id:'math1', name:'উচ্চতর গণিত ১ম পত্র', symbol:'HM₁', color:'var(--math)', chapters:[
+    'ম্যাট্রিক্স ও নির্ণায়ক','ভেক্টর','সরলরেখা','বৃত্ত','অন্তরীকরণ','যোগজীকরণ',
+    'ত্রিকোণমিতিক অনুপাত','সংযোগ ও বিন্যাস'
+  ]},
+  {id:'math2', name:'উচ্চতর গণিত ২য় পত্র', symbol:'HM₂', color:'var(--math)', chapters:[
+    'বাস্তব সংখ্যা ও অসমতা','যোগাশ্রয়ী রাশি','ঘাত ও লগারিদম ফাংশন','বিন্যাস ও সমাবেশ',
+    'ত্রিকোণমিতিক ফাংশন','স্থিতিবিদ্যা','সমতলে বস্তুকণার গতি','সংখ্যায়ন পদ্ধতি'
+  ]},
+  {id:'bangla', name:'বাংলা', symbol:'Bn', color:'var(--bangla)', chapters:[
+    'গদ্য','পদ্য','উপন্যাস','নাটক','ব্যাকরণ','নির্মিতি (ভাব-সম্প্রসারণ, রচনা, প্রতিবেদন)'
+  ]},
+  {id:'english', name:'English', symbol:'En', color:'var(--english)', chapters:[
+    'Seen Comprehension','Unseen Comprehension','Grammar Items','Vocabulary','Writing (Paragraph/Essay)','Writing (CV, Letter, Report)'
+  ]},
+  {id:'ict', name:'তথ্য ও যোগাযোগ প্রযুক্তি', symbol:'ICT', color:'var(--ict)', chapters:[
+    'তথ্য ও যোগাযোগ প্রযুক্তি বিশ্ব','কমিউনিকেশন সিস্টেম ও নেটওয়ার্কিং','সংখ্যা পদ্ধতি ও ডিজিটাল ডিভাইস',
+    'ওয়েব ডিজাইন পরিচিতি ও HTML','প্রোগ্রামিং ভাষা','ডেটাবেজ ম্যানেজমেন্ট সিস্টেম'
+  ]}
+];
+
+function slugify(name){
+  return name.trim().toLowerCase().replace(/[.#$\[\]\/\s]+/g,'-').replace(/[^a-z0-9\u0980-\u09FF-]/g,'') + '-' + Math.random().toString(36).slice(2,6);
+}
+
+function defaultSubjectsState(){
+  return DEFAULT_SUBJECTS.map(s => ({
+    id:s.id, name:s.name, symbol:s.symbol, color:s.color,
+    chapters: Object.fromEntries(s.chapters.map((c,i)=>[s.id+'-'+i, {name:c, done:false}]))
+  }));
+}
+
+let myId = null; // set to Firebase auth UID after sign-in
+let myName = localStorage.getItem('hsc-group-student-name');
+let state = { subjects: defaultSubjectsState() };
+let myRef = null;
+let isAdminUser = false;
+
+function setSyncPill(mode, text){
+  const pill = document.getElementById('syncPill');
+  pill.className = 'sync-pill ' + mode;
+  document.getElementById('syncText').textContent = text;
+}
+
+function initStudent(){
+  setSyncPill('busy','সাইন-ইন হচ্ছে...');
+  firebase.auth().signInAnonymously().catch(err=>{
+    setSyncPill('err','সাইন-ইন ব্যর্থ');
+    console.error(err);
+  });
+
+  firebase.auth().onAuthStateChanged(user=>{
+    if(!user) return;
+    myId = user.uid;
+    console.log('My Firebase UID:', user.uid); // <-- এডমিন সেটআপের জন্য এইটা কপি করুন (ধাপ ৬ দেখুন)
+
+    if(myName){
+      document.getElementById('nameModal').style.display = 'none';
+      startSync();
+    } else {
+      document.getElementById('nameModal').style.display = 'flex';
+    }
+  });
+}
+
+document.getElementById('nameSubmit').addEventListener('click', ()=>{
+  const val = document.getElementById('nameInput').value.trim();
+  if(!val){ return; }
+  myName = val;
+  localStorage.setItem('hsc-group-student-name', myName);
+  document.getElementById('nameModal').style.display = 'none';
+  startSync();
+});
+
+document.getElementById('switchBtn').addEventListener('click', ()=>{
+  if(confirm('এই ডিভাইসে নাম রিসেট করতে চাও? (তোমার সেভ করা প্রগ্রেস মুছবে না, শুধু নতুন করে নাম লিখতে হবে)')){
+    localStorage.removeItem('hsc-group-student-name');
+    location.reload();
+  }
+});
+
+function startSync(){
+  document.getElementById('studentNameDisplay').textContent = myName;
+  setSyncPill('busy','সিঙ্ক হচ্ছে...');
+  myRef = db.ref('students/' + myId);
+
+  myRef.once('value').then(snap=>{
+    if(!snap.exists()){
+      myRef.set({ name: myName, subjects: defaultSubjectsState(), lastUpdated: Date.now() });
+    }
+  });
+
+  myRef.on('value', snap=>{
+    const val = snap.val();
+    if(val && val.subjects){
+      state.subjects = val.subjects;
+      setSyncPill('ok','সেভড ✓');
+      render();
+    }
+  }, err=>{
+    setSyncPill('err','সংযোগ সমস্যা');
+    console.error(err);
+  });
+}
+
+function subjectPercent(subj){
+  const chapters = Object.values(subj.chapters || {});
+  if(!chapters.length) return 0;
+  const done = chapters.filter(c=>c.done).length;
+  return Math.round((done/chapters.length)*100);
+}
+
+function overallPercent(){
+  let total=0, done=0;
+  state.subjects.forEach(s=>{
+    const chapters = Object.values(s.chapters || {});
+    total += chapters.length;
+    done += chapters.filter(c=>c.done).length;
+  });
+  return total ? Math.round((done/total)*100) : 0;
+}
+
+function statusFor(pct){
+  if(pct===0) return ['প্রস্তুতি শুরু হয়নি','প্রতিটি সাবজেক্ট খুলে অধ্যায়গুলো চেক করা শুরু করুন।'];
+  if(pct<25) return ['ওয়ার্ম-আপ পর্যায়','ভালো শুরু! ধারাবাহিকতা বজায় রাখুন।'];
+  if(pct<50) return ['গতি তৈরি হচ্ছে','লক্ষ্যের দিকে এগিয়ে যাচ্ছো — দুর্বল অধ্যায়গুলো আগে শেষ করো।'];
+  if(pct<75) return ['অর্ধেক পথ পেরিয়ে গেছো','এখন থেকে রিভিশনের পরিকল্পনা শুরু করতে পারো।'];
+  if(pct<100) return ['চূড়ান্ত রিভিশন পর্যায়','প্রায় শেষের দিকে — বাকি অধ্যায় শেষ করো।'];
+  return ['সিলেবাস সম্পূর্ণ ✓','এখন নিয়মিত রিভিশন ও মডেল টেস্ট দাও।'];
+}
+
+function renderGauge(){
+  const pct = overallPercent();
+  document.getElementById('overallPct').textContent = pct+'%';
+  const circumference = 2*Math.PI*60;
+  const offset = circumference - (pct/100)*circumference;
+  const ring = document.getElementById('ringFg');
+  ring.setAttribute('stroke-dasharray', circumference);
+  ring.setAttribute('stroke-dashoffset', offset);
+  const [title, desc] = statusFor(pct);
+  document.getElementById('statusTitle').textContent = title;
+  document.getElementById('statusDesc').textContent = desc;
+}
+
+function render(){
+  renderGauge();
+  const grid = document.getElementById('subjectGrid');
+  grid.innerHTML = '';
+  state.subjects.forEach(subj=>{
+    const chapters = Object.entries(subj.chapters || {});
+    const pct = subjectPercent(subj);
+    const doneCount = chapters.filter(([,c])=>c.done).length;
+    const card = document.createElement('div');
+    card.className = 'card' + (subj._open ? ' open':'');
+    card.style.setProperty('--sub-color', subj.color);
+    card.innerHTML = `
+      <div class="head" data-id="${subj.id}">
+        <div class="symbol">${subj.symbol}</div>
+        <div class="titles">
+          <div class="name">${subj.name}</div>
+          <div class="count">${doneCount}/${chapters.length} অধ্যায় সম্পন্ন</div>
+        </div>
+        <div class="pct mono">${pct}%</div>
+        <div class="chev">▾</div>
+      </div>
+      <div class="mini-bar"><div class="mini-fill" style="width:${pct}%"></div></div>
+      <div class="body">
+        <div class="chapter-list"></div>
+        <div class="add-row">
+          <input type="text" placeholder="নতুন অধ্যায়/টপিক যোগ করুন..." data-add="${subj.id}">
+          <button data-addbtn="${subj.id}">যোগ করুন</button>
+        </div>
+      </div>
+    `;
+    const list = card.querySelector('.chapter-list');
+    chapters.forEach(([cid, ch])=>{
+      const row = document.createElement('div');
+      row.className = 'chapter' + (ch.done?' done':'');
+      row.innerHTML = `
+        <input type="checkbox" ${ch.done?'checked':''} data-toggle="${subj.id}|${cid}">
+        <div class="cname">${ch.name}</div>
+        <button class="del" data-del="${subj.id}|${cid}">✕</button>
+      `;
+      list.appendChild(row);
+    });
+    grid.appendChild(card);
+  });
+}
+
+document.addEventListener('click', (e)=>{
+  const head = e.target.closest('.head');
+  if(head){
+    const id = head.dataset.id;
+    const subj = state.subjects.find(s=>s.id===id);
+    subj._open = !subj._open;
+    render();
+    return;
+  }
+  const delBtn = e.target.closest('[data-del]');
+  if(delBtn){
+    const [sid, cid] = delBtn.dataset.del.split('|');
+    myRef.child('subjects').once('value').then(snap=>{
+      const subjects = snap.val();
+      const idx = subjects.findIndex(s=>s.id===sid);
+      delete subjects[idx].chapters[cid];
+      myRef.update({ subjects, lastUpdated: Date.now() });
+    });
+    return;
+  }
+  const addBtn = e.target.closest('[data-addbtn]');
+  if(addBtn){
+    const sid = addBtn.dataset.addbtn;
+    const input = document.querySelector(`[data-add="${sid}"]`);
+    const val = input.value.trim();
+    if(val){
+      myRef.child('subjects').once('value').then(snap=>{
+        const subjects = snap.val();
+        const idx = subjects.findIndex(s=>s.id===sid);
+        const newId = sid+'-'+Date.now();
+        subjects[idx].chapters[newId] = { name: val, done:false };
+        myRef.update({ subjects, lastUpdated: Date.now() });
+      });
+    }
+    return;
+  }
+});
+
+document.addEventListener('change', (e)=>{
+  const toggle = e.target.closest('[data-toggle]');
+  if(toggle){
+    const [sid, cid] = toggle.dataset.toggle.split('|');
+    myRef.child(`subjects`).once('value').then(snap=>{
+      const subjects = snap.val();
+      const idx = subjects.findIndex(s=>s.id===sid);
+      subjects[idx].chapters[cid].done = toggle.checked;
+      myRef.update({ subjects, lastUpdated: Date.now() });
+    });
+  }
+});
+
+document.getElementById('resetBtn').addEventListener('click', ()=>{
+  if(confirm('তোমার সব প্রগ্রেস রিসেট করতে চাও? এটা পূর্বাবস্থায় ফেরানো যাবে না।')){
+    myRef.set({ name: myName, subjects: defaultSubjectsState(), lastUpdated: Date.now() });
+  }
+});
+
+// ---------------- ADMIN PANEL ----------------
+let adminOpen = false;
+document.getElementById('adminBtn').addEventListener('click', ()=>{
+  if(!adminOpen){
+    const pass = prompt('এডমিন পাসকোড দিন:');
+    if(pass !== ADMIN_PASSCODE){ alert('ভুল পাসকোড'); return; }
+    adminOpen = true;
+    document.getElementById('mainView').style.display = 'none';
+    document.getElementById('adminPanel').classList.add('open');
+    document.getElementById('adminBtn').textContent = 'নিজের ভিউ';
+    loadAdminData();
+  } else {
+    adminOpen = false;
+    document.getElementById('mainView').style.display = 'block';
+    document.getElementById('adminPanel').classList.remove('open');
+    document.getElementById('adminBtn').textContent = 'এডমিন ভিউ';
+  }
+});
+
+function loadAdminData(){
+  db.ref('students').on('value', snap=>{
+    const all = snap.val() || {};
+    const rows = Object.entries(all).map(([id, s])=>{
+      const subjects = s.subjects || [];
+      let total=0, done=0;
+      subjects.forEach(subj=>{
+        const chapters = Object.values(subj.chapters || {});
+        total += chapters.length;
+        done += chapters.filter(c=>c.done).length;
+      });
+      const pct = total ? Math.round((done/total)*100) : 0;
+      return { name: s.name || id, pct, updated: s.lastUpdated };
+    }).sort((a,b)=>b.pct - a.pct);
+
+    const list = document.getElementById('adminList');
+    list.innerHTML = '';
+    if(!rows.length){
+      list.innerHTML = '<div style="padding:16px; color:var(--muted); font-size:13px;">এখনো কেউ শুরু করেনি।</div>';
+      return;
+    }
+    rows.forEach(r=>{
+      const row = document.createElement('div');
+      row.className = 'admin-row';
+      const updatedStr = r.updated ? new Date(r.updated).toLocaleDateString('bn-BD') : '—';
+      row.innerHTML = `
+        <div class="admin-name">${r.name}<div class="admin-updated">সর্বশেষ: ${updatedStr}</div></div>
+        <div class="admin-pct">${r.pct}%</div>
+        <div class="admin-bar-wrap"><div class="admin-bar-fill" style="width:${r.pct}%"></div></div>
+      `;
+      list.appendChild(row);
+    });
+  }, err=>{
+    document.getElementById('adminList').innerHTML =
+      '<div style="padding:16px; color:var(--warn); font-size:13px;">অ্যাক্সেস নেই — এই UID এডমিন হিসেবে সেট করা নেই (Firebase rules-এ YOUR_UID_HERE বসানো হয়েছে কিনা চেক করুন)।</div>';
+    console.error(err);
+  });
+}
+
+initStudent();
+</script>
+</body>
+</html>
