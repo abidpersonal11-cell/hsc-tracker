@@ -17,29 +17,32 @@
   4. প্রজেক্ট Settings (⚙️) > General > "Add app" > Web (</>) — যে firebaseConfig পাবেন সেটা নিচের
      FIREBASE_CONFIG-এ বসান, এবং ADMIN_PASSCODE বদলে নিজের পাসকোড দিন
 
-  ধাপ ৫-৭: নিজের UID বের করে এডমিন অ্যাক্সেস সেট করা (তোমার একজনের জন্যই লাগবে)
-  5. FIREBASE_CONFIG বসিয়ে এই ফাইলটা একবার নিজের ব্রাউজারে খুলুন, নাম দিয়ে ঢুকুন
-  6. ব্রাউজারে Developer Tools (F12) > Console ট্যাবে খুলুন — সেখানে "My Firebase UID: xxxxx" লেখা একটা
-     লাইন দেখতে পাবেন, সেই UID-টুকু কপি করে রাখুন
-  7. Firebase Console > Realtime Database > Rules ট্যাবে গিয়ে নিচের rules বসান
-     (YOUR_UID_HERE এর জায়গায় ৬ নং ধাপের UID বসিয়ে) এবং Publish করুন:
+  ধাপ ৫: Firebase Rules বসানো (ওপেন লিডারবোর্ডের জন্য — সবাই সবার % দেখতে পারবে, কিন্তু
+  শুধু নিজের ডেটা বদলাতে পারবে)
+  Firebase Console > Realtime Database > Rules ট্যাবে গিয়ে এটা বসান ও Publish করুন:
 
      {
        "rules": {
          "students": {
+           ".read": "auth != null",
            "$uid": {
-             ".read": "auth != null && ($uid === auth.uid || auth.uid === 'YOUR_UID_HERE')",
              ".write": "auth != null && $uid === auth.uid"
            }
          }
        }
      }
 
-     এর ফলে প্রত্যেকে শুধু নিজের ডেটা read/write করতে পারবে, আর শুধু তোমার (YOUR_UID_HERE) অ্যাকাউন্ট
-     থেকে এডমিন ভিউতে সবার ডেটা read করা যাবে। কেউ চাইলেও ব্রাউজার কনসোল থেকে অন্যের ডেটা দেখতে/বদলাতে
-     পারবে না — এটা Firebase নিজেই আটকে দেবে।
-  8. ফাইলটা GitHub Pages-এ পুশ করুন — সবাই একই লিংক ব্যবহার করবে
+  ধাপ ৬. ফাইলটা (index.html, manifest.json, icon-192.png, icon-512.png, icon-512-maskable.png)
+     GitHub Pages-এ পুশ করুন — সবাই একই লিংক ব্যবহার করবে। লিংক খুলে ব্রাউজারের মেনু থেকে
+     "Add to Home screen" করলে এটা অ্যাপের মতো আইকনসহ ব্যবহার করা যাবে।
 ==================================================================== -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0a121f">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="HSC Tracker">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
@@ -86,13 +89,42 @@
   .sync-pill.busy .dot{background:var(--chemistry);}
   .sync-pill.err .dot{background:var(--warn);}
 
-  .top-actions{display:flex; gap:8px; align-items:center;}
+  .top-actions{display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
   .btn{
     background:var(--panel); border:1px solid var(--border); color:var(--ink); padding:8px 14px;
     border-radius:7px; font-size:12.5px; cursor:pointer; font-weight:500;
   }
   .btn.warn{color:var(--warn); border-color:var(--warn);}
   .btn.primary{background:var(--physics); color:#0a121f; border-color:var(--physics); font-weight:600;}
+
+  .countdown{text-align:right; min-width:130px;}
+  .countdown .num{font-size:26px; font-weight:700; color:var(--warn); line-height:1;}
+  .countdown .lbl{font-size:10px; color:var(--muted); letter-spacing:0.1em; text-transform:uppercase; margin-top:3px;}
+  .countdown input{
+    margin-top:6px; background:var(--panel2); border:1px solid var(--border); color:var(--muted);
+    font-size:10.5px; font-family:'JetBrains Mono',monospace; padding:3px 5px; border-radius:4px;
+  }
+
+  .streak-pill{
+    font-family:'JetBrains Mono',monospace; font-size:12px; padding:6px 12px; border-radius:20px;
+    border:1px solid var(--chemistry); color:var(--chemistry); background:color-mix(in srgb, var(--chemistry) 10%, transparent);
+    font-weight:600;
+  }
+
+  .leaderboard-wrap{
+    background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:16px;
+    margin-bottom:20px;
+  }
+  .lb-row{
+    display:flex; align-items:center; gap:12px; padding:9px 4px; border-bottom:1px dashed var(--border);
+  }
+  .lb-row:last-child{border-bottom:none;}
+  .lb-rank{width:22px; font-family:'JetBrains Mono',monospace; font-weight:700; color:var(--muted); font-size:13px; flex-shrink:0;}
+  .lb-name{flex:1; font-size:13.5px; font-weight:500; min-width:0;}
+  .lb-name.me{color:var(--physics);}
+  .lb-bar-wrap{flex:1.4; background:var(--panel2); border-radius:4px; height:7px; overflow:hidden; border:1px solid var(--border);}
+  .lb-bar-fill{height:100%; background:linear-gradient(90deg,var(--physics),var(--done));}
+  .lb-pct{font-family:'JetBrains Mono',monospace; font-weight:700; font-size:13px; width:38px; text-align:right; flex-shrink:0;}
 
   .gauge-row{display:flex; gap:28px; align-items:center; flex-wrap:wrap; margin-bottom:30px;}
   .gauge{position:relative; width:140px; height:140px; flex-shrink:0;}
@@ -188,7 +220,13 @@
       <h1 id="studentNameDisplay">—</h1>
       <div class="sub">গ্রুপ স্টাডি সিলেবাস ট্র্যাকার</div>
     </div>
+    <div class="countdown">
+      <div class="num mono" id="cdNum">--</div>
+      <div class="lbl">দিন বাকি (পরীক্ষা)</div>
+      <input type="date" id="examDate">
+    </div>
     <div class="top-actions">
+      <div class="streak-pill" id="streakPill">🔥 <span id="streakCount">0</span> দিন</div>
       <div class="sync-pill" id="syncPill"><span class="dot"></span><span id="syncText">লোড হচ্ছে...</span></div>
       <button class="btn" id="adminBtn">এডমিন ভিউ</button>
       <button class="btn" id="switchBtn">অ্যাকাউন্ট পরিবর্তন</button>
@@ -212,6 +250,12 @@
         <div class="status-title" id="statusTitle">প্রস্তুতি শুরু হয়নি</div>
         <div class="status-desc" id="statusDesc">প্রতিটি সাবজেক্ট খুলে অধ্যায়গুলো চেক করা শুরু করুন।</div>
       </div>
+    </div>
+
+    <div class="leaderboard-wrap">
+      <h2 style="font-size:16px; margin-bottom:2px;">গ্রুপ লিডারবোর্ড</h2>
+      <p style="color:var(--muted); font-size:12.5px; margin-bottom:12px;">সবার সামগ্রিক অগ্রগতি, সবচেয়ে এগিয়ে যিনি তার ক্রম উপরে</p>
+      <div id="leaderboardList"></div>
     </div>
 
     <div class="grid" id="subjectGrid"></div>
@@ -305,7 +349,7 @@ function defaultSubjectsState(){
 
 let myId = null; // set to Firebase auth UID after sign-in
 let myName = localStorage.getItem('hsc-group-student-name');
-let state = { subjects: defaultSubjectsState() };
+let state = { examDate: '2027-07-01', streak: {count:0, lastDate:null}, subjects: defaultSubjectsState() };
 let myRef = null;
 let isAdminUser = false;
 
@@ -356,6 +400,41 @@ document.getElementById('showUidBtn').addEventListener('click', ()=>{
   alert('আমার Firebase UID:\n\n' + myId + '\n\nএটা কপি করে Firebase Rules-এ বসাও।');
 });
 
+function todayStr(){
+  return new Date().toISOString().slice(0,10);
+}
+
+function computeNewStreak(streak){
+  const today = todayStr();
+  if(!streak || !streak.lastDate) return {count:1, lastDate:today};
+  if(streak.lastDate === today) return streak;
+  const last = new Date(streak.lastDate+'T00:00:00');
+  const diffDays = Math.round((new Date(today+'T00:00:00') - last)/(1000*60*60*24));
+  if(diffDays === 1) return {count:(streak.count||0)+1, lastDate: today};
+  return {count:1, lastDate: today};
+}
+
+function updateCountdown(){
+  const el = document.getElementById('cdNum');
+  const dateInput = document.getElementById('examDate');
+  dateInput.value = state.examDate;
+  const target = new Date(state.examDate+'T00:00:00');
+  const now = new Date();
+  const diffMs = target - now;
+  const days = Math.ceil(diffMs / (1000*60*60*24));
+  el.textContent = days > 0 ? days : (days===0?'0':'—');
+}
+
+document.getElementById('examDate').addEventListener('change', (e)=>{
+  state.examDate = e.target.value;
+  if(myRef) myRef.update({ examDate: state.examDate });
+  updateCountdown();
+});
+
+function renderStreak(){
+  document.getElementById('streakCount').textContent = (state.streak && state.streak.count) || 0;
+}
+
 function startSync(){
   document.getElementById('studentNameDisplay').textContent = myName;
   setSyncPill('busy','সিঙ্ক হচ্ছে...');
@@ -363,7 +442,10 @@ function startSync(){
 
   myRef.once('value').then(snap=>{
     if(!snap.exists()){
-      myRef.set({ name: myName, subjects: defaultSubjectsState(), lastUpdated: Date.now() });
+      myRef.set({
+        name: myName, examDate:'2027-07-01', streak:{count:0,lastDate:null},
+        subjects: defaultSubjectsState(), lastUpdated: Date.now()
+      });
     }
   });
 
@@ -371,12 +453,58 @@ function startSync(){
     const val = snap.val();
     if(val && val.subjects){
       state.subjects = val.subjects;
+      state.examDate = val.examDate || '2027-07-01';
+      state.streak = val.streak || {count:0, lastDate:null};
       setSyncPill('ok','সেভড ✓');
       render();
+      updateCountdown();
+      renderStreak();
     }
   }, err=>{
     setSyncPill('err','সংযোগ সমস্যা');
     console.error(err);
+  });
+
+  startLeaderboard();
+}
+
+function startLeaderboard(){
+  db.ref('students').on('value', snap=>{
+    const all = snap.val() || {};
+    const rows = Object.entries(all).map(([id, s])=>{
+      const subjects = s.subjects || [];
+      let total=0, done=0;
+      subjects.forEach(subj=>{
+        const chapters = Object.values(subj.chapters || {});
+        total += chapters.length;
+        done += chapters.filter(c=>c.done).length;
+      });
+      const pct = total ? Math.round((done/total)*100) : 0;
+      return { id, name: s.name || '—', pct };
+    }).sort((a,b)=>b.pct - a.pct);
+    renderLeaderboard(rows);
+  }, err=>{ console.error(err); });
+}
+
+function renderLeaderboard(rows){
+  const list = document.getElementById('leaderboardList');
+  list.innerHTML = '';
+  if(!rows.length){
+    list.innerHTML = '<div style="padding:10px; color:var(--muted); font-size:13px;">এখনো কেউ শুরু করেনি।</div>';
+    return;
+  }
+  rows.forEach((r,i)=>{
+    const row = document.createElement('div');
+    row.className = 'lb-row';
+    const isMe = r.id === myId;
+    const medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1);
+    row.innerHTML = `
+      <div class="lb-rank">${medal}</div>
+      <div class="lb-name ${isMe?'me':''}">${r.name}${isMe?' (তুমি)':''}</div>
+      <div class="lb-bar-wrap"><div class="lb-bar-fill" style="width:${r.pct}%"></div></div>
+      <div class="lb-pct">${r.pct}%</div>
+    `;
+    list.appendChild(row);
   });
 }
 
@@ -510,14 +638,21 @@ document.addEventListener('change', (e)=>{
       const subjects = snap.val();
       const idx = subjects.findIndex(s=>s.id===sid);
       subjects[idx].chapters[cid].done = toggle.checked;
-      myRef.update({ subjects, lastUpdated: Date.now() });
+      const updates = { subjects, lastUpdated: Date.now() };
+      if(toggle.checked){
+        updates.streak = computeNewStreak(state.streak);
+      }
+      myRef.update(updates);
     });
   }
 });
 
 document.getElementById('resetBtn').addEventListener('click', ()=>{
   if(confirm('তোমার সব প্রগ্রেস রিসেট করতে চাও? এটা পূর্বাবস্থায় ফেরানো যাবে না।')){
-    myRef.set({ name: myName, subjects: defaultSubjectsState(), lastUpdated: Date.now() });
+    myRef.set({
+      name: myName, examDate: state.examDate || '2027-07-01',
+      streak: {count:0, lastDate:null}, subjects: defaultSubjectsState(), lastUpdated: Date.now()
+    });
   }
 });
 
@@ -580,6 +715,12 @@ function loadAdminData(){
 }
 
 initStudent();
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('./sw.js').catch(err=>console.error('SW failed:', err));
+  });
+}
 </script>
 </body>
 </html>
