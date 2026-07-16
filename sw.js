@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hsc-tracker-shell-v1';
+const CACHE_NAME = 'hsc-tracker-shell-v2';
 const SHELL_FILES = [
   './index.html',
   './manifest.json',
