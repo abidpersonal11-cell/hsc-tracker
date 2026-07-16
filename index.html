@@ -164,6 +164,13 @@
   .timer-controls{ display:flex; gap:10px; justify-content:center; }
   .timer-controls .btn.primary{ padding:11px 26px; font-size:14.5px; }
 
+  .study-history{ text-align:left; }
+  .history-row{ display:flex; align-items:center; gap:10px; padding:6px 2px; }
+  .history-label{ width:78px; font-size:12px; color:var(--muted); flex-shrink:0; }
+  .history-bar-wrap{ flex:1; background:var(--panel2); border-radius:4px; height:9px; overflow:hidden; }
+  .history-bar-fill{ height:100%; background:linear-gradient(90deg, var(--accent), var(--accent2)); border-radius:4px; }
+  .history-value{ width:70px; font-size:12px; font-family:'JetBrains Mono',monospace; color:var(--ink); text-align:right; flex-shrink:0; }
+
   .leaderboard-wrap{
     background:var(--panel); border:1px solid var(--border); border-radius:18px; padding:18px;
     margin-bottom:20px;
@@ -300,6 +307,7 @@
     <div class="top-actions">
       <button class="btn primary" id="installBtn" style="display:none;">📲 অ্যাপ ইনস্টল করো</button>
       <div class="streak-pill" id="streakPill">🔥 <span id="streakCount">0</span> দিন</div>
+      <div class="sync-pill" id="studyPill"><span id="studyTodayLabel">আজ পড়েছো: ০মি / ২ঘ</span></div>
       <div class="sync-pill" id="syncPill"><span class="dot"></span><span id="syncText">লোড হচ্ছে...</span></div>
       <button class="btn" id="adminBtn">এডমিন ভিউ</button>
       <button class="btn" id="switchBtn">লগআউট</button>
@@ -327,7 +335,7 @@
 
     <div class="timer-wrap">
       <h2 style="font-size:16px; margin-bottom:2px;">পড়ার টাইমার</h2>
-      <p style="color:var(--muted); font-size:13px; margin-bottom:14px;">সময় সিলেক্ট করে শুরু করো, সময় শেষ হলে শব্দ ও নোটিফিকেশন দেবে</p>
+      <p style="color:var(--muted); font-size:13px; margin-bottom:14px;">টাইমার চালিয়ে পড়ো — একদিনে মোট ২ ঘণ্টা টাইমার-সময় পার হলে সেদিনের স্ট্রিক গণনা হবে</p>
 
       <div class="timer-display mono" id="timerDisplay">25:00</div>
 
@@ -347,6 +355,11 @@
         <button class="btn primary" id="timerStartBtn">▶ শুরু করো</button>
         <button class="btn" id="timerPauseBtn" style="display:none;">থামাও</button>
         <button class="btn warn" id="timerResetBtn">রিসেট</button>
+      </div>
+
+      <div class="study-history">
+        <h3 style="font-size:13.5px; color:var(--muted); margin:18px 0 10px; text-align:left; font-weight:600;">গত ৭ দিনের পড়াশোনা</h3>
+        <div id="studyHistoryList"></div>
       </div>
     </div>
 
@@ -447,7 +460,7 @@ function defaultSubjectsState(){
 
 let myId = null; // set to Firebase auth UID after sign-in
 let myName = localStorage.getItem('hsc-group-student-name') || '';
-let state = { examDate: '2027-07-01', streak: {count:0, lastDate:null}, subjects: defaultSubjectsState() };
+let state = { examDate: '2027-07-01', streak: {count:0, lastDate:null}, studyHistory: {}, subjects: defaultSubjectsState() };
 let myRef = null;
 let authMode = 'new'; // 'new' or 'login'
 
@@ -591,8 +604,59 @@ document.getElementById('examDate').addEventListener('change', (e)=>{
   updateCountdown();
 });
 
+function formatDuration(seconds){
+  const mins = Math.floor(seconds/60);
+  const h = Math.floor(mins/60), m = mins%60;
+  return h > 0 ? `${h}ঘ ${m}মি` : `${m}মি`;
+}
+
 function renderStreak(){
   document.getElementById('streakCount').textContent = (state.streak && state.streak.count) || 0;
+  const todaySeconds = (state.studyHistory && state.studyHistory[todayStr()]) || 0;
+  const goalMet = todaySeconds >= 7200;
+  document.getElementById('studyTodayLabel').textContent = `আজ পড়েছো: ${formatDuration(todaySeconds)} / ২ঘ ${goalMet ? '✓' : ''}`;
+  renderStudyHistory();
+}
+
+function renderStudyHistory(){
+  const list = document.getElementById('studyHistoryList');
+  if(!list) return;
+  const hist = state.studyHistory || {};
+  const days = [];
+  for(let i=6; i>=0; i--){
+    const d = new Date();
+    d.setDate(d.getDate()-i);
+    const key = d.toISOString().slice(0,10);
+    const label = d.toLocaleDateString('bn-BD', { weekday:'short', day:'numeric', month:'short' });
+    days.push({ key, label, seconds: hist[key] || 0 });
+  }
+  const maxSec = Math.max(7200, ...days.map(d=>d.seconds));
+  list.innerHTML = days.map(d=>{
+    const pct = Math.min(100, Math.round((d.seconds/maxSec)*100));
+    const met = d.seconds >= 7200 ? ' 🔥' : '';
+    return `
+      <div class="history-row">
+        <div class="history-label">${d.label}</div>
+        <div class="history-bar-wrap"><div class="history-bar-fill" style="width:${pct}%"></div></div>
+        <div class="history-value">${formatDuration(d.seconds)}${met}</div>
+      </div>`;
+  }).join('');
+}
+
+// Adds elapsed study seconds (from the timer) to today's running total (persisted permanently per date).
+// Streak only increases once per day, after 2+ hours (7200s) of tracked timer study that day.
+function addStudySeconds(sec){
+  if(!myRef || sec <= 0) return;
+  const today = todayStr();
+  const hist = Object.assign({}, state.studyHistory || {});
+  hist[today] = (hist[today] || 0) + sec;
+  state.studyHistory = hist;
+
+  const updates = { studyHistory: hist };
+  if(hist[today] >= 7200 && state.streak.lastDate !== today){
+    updates.streak = computeNewStreak(state.streak);
+  }
+  myRef.update(updates);
 }
 
 function syncLeaderboardEntry(){
@@ -612,6 +676,7 @@ function startSync(){
     if(!snap.exists()){
       myRef.set({
         name: myName, examDate:'2027-07-01', streak:{count:0,lastDate:null},
+        studyHistory:{},
         subjects: defaultSubjectsState(), lastUpdated: Date.now()
       });
       db.ref('leaderboard/' + myId).set({ name: myName, pct: 0, updated: Date.now() });
@@ -629,6 +694,7 @@ function startSync(){
       state.subjects = val.subjects;
       state.examDate = val.examDate || '2027-07-01';
       state.streak = val.streak || {count:0, lastDate:null};
+      state.studyHistory = val.studyHistory || {};
       setSyncPill('ok','সেভড ✓');
       render();
       updateCountdown();
@@ -805,11 +871,7 @@ document.addEventListener('change', (e)=>{
       const subjects = snap.val();
       const idx = subjects.findIndex(s=>s.id===sid);
       subjects[idx].chapters[cid].done = toggle.checked;
-      const updates = { subjects, lastUpdated: Date.now() };
-      if(toggle.checked){
-        updates.streak = computeNewStreak(state.streak);
-      }
-      myRef.update(updates);
+      myRef.update({ subjects, lastUpdated: Date.now() });
     });
   }
 });
@@ -818,7 +880,8 @@ document.getElementById('resetBtn').addEventListener('click', ()=>{
   if(confirm('তোমার সব প্রগ্রেস রিসেট করতে চাও? এটা পূর্বাবস্থায় ফেরানো যাবে না।')){
     myRef.set({
       name: myName, examDate: state.examDate || '2027-07-01',
-      streak: {count:0, lastDate:null}, subjects: defaultSubjectsState(), lastUpdated: Date.now()
+      streak: {count:0, lastDate:null}, studyHistory: {},
+      subjects: defaultSubjectsState(), lastUpdated: Date.now()
     });
   }
 });
@@ -886,6 +949,7 @@ let timerTotalSeconds = 25 * 60;
 let timerRemaining = timerTotalSeconds;
 let timerInterval = null;
 let timerRunning = false;
+let sessionAnchor = timerRemaining; // timerRemaining value at last start/resume, used to measure elapsed study time
 
 function formatTime(sec){
   const m = Math.floor(sec/60).toString().padStart(2,'0');
@@ -897,6 +961,12 @@ function renderTimerDisplay(){
   document.getElementById('timerDisplay').textContent = formatTime(Math.max(0, timerRemaining));
 }
 
+function flushSessionElapsed(){
+  const elapsed = sessionAnchor - timerRemaining;
+  if(elapsed > 0){ addStudySeconds(elapsed); }
+  sessionAnchor = timerRemaining;
+}
+
 document.querySelectorAll('.preset-btn').forEach(btn=>{
   btn.addEventListener('click', ()=>{
     if(timerRunning) return;
@@ -905,6 +975,7 @@ document.querySelectorAll('.preset-btn').forEach(btn=>{
     const min = parseInt(btn.dataset.min, 10);
     timerTotalSeconds = min*60;
     timerRemaining = timerTotalSeconds;
+    sessionAnchor = timerRemaining;
     renderTimerDisplay();
   });
 });
@@ -916,6 +987,7 @@ document.getElementById('setCustomBtn').addEventListener('click', ()=>{
   document.querySelectorAll('.preset-btn').forEach(b=>b.classList.remove('active'));
   timerTotalSeconds = val*60;
   timerRemaining = timerTotalSeconds;
+  sessionAnchor = timerRemaining;
   renderTimerDisplay();
 });
 
@@ -941,6 +1013,7 @@ function playAlarmSound(){
 function timerFinished(){
   timerRunning = false;
   clearInterval(timerInterval);
+  flushSessionElapsed();
   document.getElementById('timerDisplay').classList.add('ringing');
   document.getElementById('timerStartBtn').style.display = 'inline-block';
   document.getElementById('timerStartBtn').textContent = '▶ আবার শুরু করো';
@@ -959,6 +1032,7 @@ document.getElementById('timerStartBtn').addEventListener('click', ()=>{
   }
   document.getElementById('timerDisplay').classList.remove('ringing');
   if(timerRemaining <= 0){ timerRemaining = timerTotalSeconds; }
+  sessionAnchor = timerRemaining;
   timerRunning = true;
   document.getElementById('timerStartBtn').style.display = 'none';
   document.getElementById('timerPauseBtn').style.display = 'inline-block';
@@ -973,6 +1047,7 @@ document.getElementById('timerStartBtn').addEventListener('click', ()=>{
 document.getElementById('timerPauseBtn').addEventListener('click', ()=>{
   timerRunning = false;
   clearInterval(timerInterval);
+  flushSessionElapsed();
   document.getElementById('timerPauseBtn').style.display = 'none';
   document.getElementById('timerStartBtn').style.display = 'inline-block';
   document.getElementById('timerStartBtn').textContent = '▶ আবার চালু করো';
@@ -981,7 +1056,9 @@ document.getElementById('timerPauseBtn').addEventListener('click', ()=>{
 document.getElementById('timerResetBtn').addEventListener('click', ()=>{
   timerRunning = false;
   clearInterval(timerInterval);
+  flushSessionElapsed();
   timerRemaining = timerTotalSeconds;
+  sessionAnchor = timerRemaining;
   renderTimerDisplay();
   document.getElementById('timerDisplay').classList.remove('ringing');
   document.getElementById('timerStartBtn').style.display = 'inline-block';
