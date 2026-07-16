@@ -17,13 +17,19 @@
   4. প্রজেক্ট Settings (⚙️) > General > "Add app" > Web (</>) — যে firebaseConfig পাবেন সেটা নিচের
      FIREBASE_CONFIG-এ বসান, এবং ADMIN_PASSCODE বদলে নিজের পাসকোড দিন
 
-  ধাপ ৫: Firebase Rules বসানো (ওপেন লিডারবোর্ডের জন্য — সবাই সবার % দেখতে পারবে, কিন্তু
-  শুধু নিজের ডেটা বদলাতে পারবে)
-  Firebase Console > Realtime Database > Rules ট্যাবে গিয়ে এটা বসান ও Publish করুন:
+  ধাপ ৫: Firebase Rules বসানো
+  Firebase Console > Realtime Database > Rules ট্যাবে গিয়ে এটা বসান ও Publish করুন
+  (YOUR_UID_HERE এর জায়গায় নিচের "UID দেখুন" বাটন থেকে পাওয়া তোমার নিজের UID বসাও):
 
      {
        "rules": {
          "students": {
+           "$uid": {
+             ".read": "auth != null && ($uid === auth.uid || auth.uid === 'YOUR_UID_HERE')",
+             ".write": "auth != null && $uid === auth.uid"
+           }
+         },
+         "leaderboard": {
            ".read": "auth != null",
            "$uid": {
              ".write": "auth != null && $uid === auth.uid"
@@ -31,6 +37,9 @@
          }
        }
      }
+
+     এর ফলে: প্রতিটা চ্যাপ্টারের বিস্তারিত তথ্য ("students" নোড) শুধু নিজে ও তুমি (এডমিন) দেখতে পারবে।
+     শুধু নাম+% ("leaderboard" নোড) সবাই দেখতে পারবে ওপেন লিডারবোর্ডে।
 
   ধাপ ৬. ফাইলটা (index.html, manifest.json, icon-192.png, icon-512.png, icon-512-maskable.png)
      GitHub Pages-এ পুশ করুন — সবাই একই লিংক ব্যবহার করবে। লিংক খুলে ব্রাউজারের মেনু থেকে
@@ -435,6 +444,15 @@ function renderStreak(){
   document.getElementById('streakCount').textContent = (state.streak && state.streak.count) || 0;
 }
 
+function syncLeaderboardEntry(){
+  if(!myId) return;
+  db.ref('leaderboard/' + myId).set({
+    name: myName,
+    pct: overallPercent(),
+    updated: Date.now()
+  });
+}
+
 function startSync(){
   document.getElementById('studentNameDisplay').textContent = myName;
   setSyncPill('busy','সিঙ্ক হচ্ছে...');
@@ -446,6 +464,7 @@ function startSync(){
         name: myName, examDate:'2027-07-01', streak:{count:0,lastDate:null},
         subjects: defaultSubjectsState(), lastUpdated: Date.now()
       });
+      db.ref('leaderboard/' + myId).set({ name: myName, pct: 0, updated: Date.now() });
     }
   });
 
@@ -459,6 +478,7 @@ function startSync(){
       render();
       updateCountdown();
       renderStreak();
+      syncLeaderboardEntry();
     }
   }, err=>{
     setSyncPill('err','সংযোগ সমস্যা');
@@ -469,19 +489,11 @@ function startSync(){
 }
 
 function startLeaderboard(){
-  db.ref('students').on('value', snap=>{
+  db.ref('leaderboard').on('value', snap=>{
     const all = snap.val() || {};
-    const rows = Object.entries(all).map(([id, s])=>{
-      const subjects = s.subjects || [];
-      let total=0, done=0;
-      subjects.forEach(subj=>{
-        const chapters = Object.values(subj.chapters || {});
-        total += chapters.length;
-        done += chapters.filter(c=>c.done).length;
-      });
-      const pct = total ? Math.round((done/total)*100) : 0;
-      return { id, name: s.name || '—', pct };
-    }).sort((a,b)=>b.pct - a.pct);
+    const rows = Object.entries(all).map(([id, s])=>({
+      id, name: s.name || '—', pct: s.pct || 0
+    })).sort((a,b)=>b.pct - a.pct);
     renderLeaderboard(rows);
   }, err=>{ console.error(err); });
 }
