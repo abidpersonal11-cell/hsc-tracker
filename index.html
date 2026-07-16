@@ -13,7 +13,8 @@
   ধাপ ১-৪: প্রজেক্ট ও কনফিগ
   1. https://console.firebase.google.com -এ যান, নতুন প্রজেক্ট বানান (ফ্রি)
   2. বাম মেনু থেকে Build > Realtime Database > Create Database (যেকোনো Location, "Start in test mode")
-  3. Build > Authentication > Get Started > Sign-in method ট্যাবে "Anonymous" চালু (Enable) করুন
+  3. Build > Authentication > Get Started > Sign-in method ট্যাবে "Email/Password" চালু (Enable) করুন
+     (Anonymous আগে থেকে চালু থাকলে সমস্যা নেই, ওটা বন্ধ করার দরকার নেই)
   4. প্রজেক্ট Settings (⚙️) > General > "Add app" > Web (</>) — যে firebaseConfig পাবেন সেটা নিচের
      FIREBASE_CONFIG-এ বসান, এবং ADMIN_PASSCODE বদলে নিজের পাসকোড দিন
 
@@ -105,6 +106,7 @@
   }
   .btn.warn{color:var(--warn); border-color:var(--warn);}
   .btn.primary{background:var(--physics); color:#0a121f; border-color:var(--physics); font-weight:600;}
+  .btn.active-tab{background:var(--physics); color:#0a121f; border-color:var(--physics); font-weight:600;}
 
   .countdown{text-align:right; min-width:130px;}
   .countdown .num{font-size:26px; font-weight:700; color:var(--warn); line-height:1;}
@@ -215,10 +217,21 @@
 
 <div id="nameModal" class="modal-overlay">
   <div class="modal">
-    <h2>স্বাগতম 👋</h2>
-    <p>গ্রুপ ট্র্যাকারে তোমার প্রগ্রেস আলাদাভাবে সেভ হবে। শুরুতে তোমার নাম লিখো (একবারই লাগবে, পরের বার এই ডিভাইসে অটো লগইন হয়ে যাবে)।</p>
-    <input type="text" id="nameInput" placeholder="তোমার নাম লিখো">
-    <button class="btn primary" id="nameSubmit">শুরু করি</button>
+    <h2 id="modalTitle">স্বাগতম 👋</h2>
+    <p id="modalDesc">প্রথমবার হলে নতুন অ্যাকাউন্ট বানাও (ইউজারনেম + ৬ ডিজিটের পিন)। এই পিনটা মনে রাখবে — অন্য ডিভাইসে ঢুকতে এটা লাগবে।</p>
+
+    <div style="display:flex; gap:8px; margin-bottom:16px;">
+      <button class="btn" id="tabNew" style="flex:1;">নতুন অ্যাকাউন্ট</button>
+      <button class="btn" id="tabLogin" style="flex:1;">আগের অ্যাকাউন্ট</button>
+    </div>
+
+    <div id="nameFieldWrap">
+      <input type="text" id="displayNameInput" placeholder="প্রদর্শনের নাম (যেমন: Abid Hakim)">
+    </div>
+    <input type="text" id="usernameInput" placeholder="ইউজারনেম (ইংরেজিতে, ইউনিক, যেমন: abid101)" autocapitalize="off">
+    <input type="password" id="pinInput" placeholder="৬ ডিজিটের পিন" inputmode="numeric" maxlength="6">
+    <div id="authError" style="color:var(--warn); font-size:12.5px; margin:-6px 0 12px; display:none;"></div>
+    <button class="btn primary" id="authSubmit">অ্যাকাউন্ট বানাও</button>
   </div>
 </div>
 
@@ -238,7 +251,7 @@
       <div class="streak-pill" id="streakPill">🔥 <span id="streakCount">0</span> দিন</div>
       <div class="sync-pill" id="syncPill"><span class="dot"></span><span id="syncText">লোড হচ্ছে...</span></div>
       <button class="btn" id="adminBtn">এডমিন ভিউ</button>
-      <button class="btn" id="switchBtn">অ্যাকাউন্ট পরিবর্তন</button>
+      <button class="btn" id="switchBtn">লগআউট</button>
       <button class="btn" id="showUidBtn">UID দেখুন</button>
     </div>
   </header>
@@ -357,10 +370,10 @@ function defaultSubjectsState(){
 }
 
 let myId = null; // set to Firebase auth UID after sign-in
-let myName = localStorage.getItem('hsc-group-student-name');
+let myName = localStorage.getItem('hsc-group-student-name') || '';
 let state = { examDate: '2027-07-01', streak: {count:0, lastDate:null}, subjects: defaultSubjectsState() };
 let myRef = null;
-let isAdminUser = false;
+let authMode = 'new'; // 'new' or 'login'
 
 function setSyncPill(mode, text){
   const pill = document.getElementById('syncPill');
@@ -368,40 +381,102 @@ function setSyncPill(mode, text){
   document.getElementById('syncText').textContent = text;
 }
 
+function usernameToEmail(username){
+  const clean = username.trim().toLowerCase().replace(/[^a-z0-9_.-]/g, '');
+  return clean + '@hsc2027tracker.app';
+}
+
+function showAuthError(msg){
+  const el = document.getElementById('authError');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+function clearAuthError(){
+  document.getElementById('authError').style.display = 'none';
+}
+
+function setAuthMode(mode){
+  authMode = mode;
+  clearAuthError();
+  const tabNew = document.getElementById('tabNew');
+  const tabLogin = document.getElementById('tabLogin');
+  const nameWrap = document.getElementById('nameFieldWrap');
+  const submitBtn = document.getElementById('authSubmit');
+  if(mode === 'new'){
+    tabNew.classList.add('active-tab'); tabLogin.classList.remove('active-tab');
+    nameWrap.style.display = 'block';
+    submitBtn.textContent = 'অ্যাকাউন্ট বানাও';
+    document.getElementById('modalDesc').textContent = 'প্রথমবার হলে নতুন অ্যাকাউন্ট বানাও (ইউজারনেম + ৬ ডিজিটের পিন)। এই পিনটা মনে রাখবে — অন্য ডিভাইসে ঢুকতে এটা লাগবে।';
+  } else {
+    tabLogin.classList.add('active-tab'); tabNew.classList.remove('active-tab');
+    nameWrap.style.display = 'none';
+    submitBtn.textContent = 'লগইন করো';
+    document.getElementById('modalDesc').textContent = 'আগে থেকে অ্যাকাউন্ট থাকলে ইউজারনেম আর পিন দিয়ে লগইন করো — অন্য যেকোনো ডিভাইস থেকে করলেও তোমার আগের প্রগ্রেস ফিরে পাবে।';
+  }
+}
+
+document.getElementById('tabNew').addEventListener('click', ()=>setAuthMode('new'));
+document.getElementById('tabLogin').addEventListener('click', ()=>setAuthMode('login'));
+
 function initStudent(){
-  setSyncPill('busy','সাইন-ইন হচ্ছে...');
-  firebase.auth().signInAnonymously().catch(err=>{
-    setSyncPill('err','সাইন-ইন ব্যর্থ');
-    console.error(err);
-  });
-
+  setAuthMode('new');
   firebase.auth().onAuthStateChanged(user=>{
-    if(!user) return;
-    myId = user.uid;
-    console.log('My Firebase UID:', user.uid); // <-- এডমিন সেটআপের জন্য এইটা কপি করুন (ধাপ ৬ দেখুন)
-
-    if(myName){
+    if(user){
+      myId = user.uid;
+      console.log('My Firebase UID:', user.uid); // <-- এডমিন সেটআপের জন্য এইটা কপি করুন
       document.getElementById('nameModal').style.display = 'none';
       startSync();
     } else {
       document.getElementById('nameModal').style.display = 'flex';
+      setSyncPill('busy','লগইন দরকার');
     }
   });
 }
 
-document.getElementById('nameSubmit').addEventListener('click', ()=>{
-  const val = document.getElementById('nameInput').value.trim();
-  if(!val){ return; }
-  myName = val;
-  localStorage.setItem('hsc-group-student-name', myName);
-  document.getElementById('nameModal').style.display = 'none';
-  startSync();
+document.getElementById('authSubmit').addEventListener('click', ()=>{
+  clearAuthError();
+  const username = document.getElementById('usernameInput').value.trim();
+  const pin = document.getElementById('pinInput').value.trim();
+  const displayName = document.getElementById('displayNameInput').value.trim();
+
+  if(!username || username.length < 3){ showAuthError('ইউজারনেম অন্তত ৩ অক্ষরের দিন।'); return; }
+  if(!/^\d{6}$/.test(pin)){ showAuthError('পিন অবশ্যই ৬ ডিজিটের সংখ্যা হতে হবে।'); return; }
+
+  const email = usernameToEmail(username);
+
+  if(authMode === 'new'){
+    if(!displayName){ showAuthError('প্রদর্শনের নাম লিখো।'); return; }
+    firebase.auth().createUserWithEmailAndPassword(email, pin)
+      .then(()=>{
+        myName = displayName;
+        localStorage.setItem('hsc-group-student-name', myName);
+      })
+      .catch(err=>{
+        if(err.code === 'auth/email-already-in-use'){
+          showAuthError('এই ইউজারনেম আগে থেকেই আছে। অন্য একটা বেছে নাও, অথবা "আগের অ্যাকাউন্ট" ট্যাব দিয়ে লগইন করো।');
+        } else {
+          showAuthError('সমস্যা হয়েছে: ' + err.message);
+        }
+      });
+  } else {
+    firebase.auth().signInWithEmailAndPassword(email, pin)
+      .then(()=>{
+        // name will be loaded from the student's saved data in startSync
+      })
+      .catch(err=>{
+        if(err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found'){
+          showAuthError('ইউজারনেম বা পিন ভুল হয়েছে।');
+        } else {
+          showAuthError('সমস্যা হয়েছে: ' + err.message);
+        }
+      });
+  }
 });
 
 document.getElementById('switchBtn').addEventListener('click', ()=>{
-  if(confirm('এই ডিভাইসে নাম রিসেট করতে চাও? (তোমার সেভ করা প্রগ্রেস মুছবে না, শুধু নতুন করে নাম লিখতে হবে)')){
+  if(confirm('লগআউট করতে চাও? (তোমার সেভ করা প্রগ্রেস মুছবে না, পরের বার ইউজারনেম+পিন দিয়ে আবার ঢুকতে হবে)')){
     localStorage.removeItem('hsc-group-student-name');
-    location.reload();
+    firebase.auth().signOut().then(()=> location.reload());
   }
 });
 
@@ -454,7 +529,6 @@ function syncLeaderboardEntry(){
 }
 
 function startSync(){
-  document.getElementById('studentNameDisplay').textContent = myName;
   setSyncPill('busy','সিঙ্ক হচ্ছে...');
   myRef = db.ref('students/' + myId);
 
@@ -465,7 +539,12 @@ function startSync(){
         subjects: defaultSubjectsState(), lastUpdated: Date.now()
       });
       db.ref('leaderboard/' + myId).set({ name: myName, pct: 0, updated: Date.now() });
+    } else if(!myName && snap.val().name){
+      // logging in fresh on a new device — recover display name from saved data
+      myName = snap.val().name;
+      localStorage.setItem('hsc-group-student-name', myName);
     }
+    document.getElementById('studentNameDisplay').textContent = myName;
   });
 
   myRef.on('value', snap=>{
