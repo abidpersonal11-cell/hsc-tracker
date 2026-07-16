@@ -47,7 +47,7 @@
      "Add to Home screen" করলে এটা অ্যাপের মতো আইকনসহ ব্যবহার করা যাবে।
 ==================================================================== -->
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#0a121f">
+<meta name="theme-color" content="#eef2f8">
 <link rel="apple-touch-icon" href="icon-192.png">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -59,12 +59,12 @@
 
 <style>
   :root{
-    --bg:#0a121f; --bg2:#0d1626; --grid:rgba(120,175,255,0.07);
-    --panel:#111e33; --panel2:#0e1a2c; --border:#1c3050;
-    --ink:#dfeaf7; --muted:#7d93b3;
-    --physics:#5ec8ff; --chemistry:#ffb454; --biology:#6cd67a;
-    --math:#c792ea; --bangla:#ff8ba7; --english:#7ee0d0; --ict:#f0e15a;
-    --done:#57e389; --warn:#ff6b6b;
+    --bg:#eef2f8; --bg2:#ffffff; --grid:rgba(20,50,90,0.05);
+    --panel:#ffffff; --panel2:#f3f6fb; --border:#d4dce6;
+    --ink:#101826; --muted:#55657a;
+    --physics:#0f7bc4; --chemistry:#b5720a; --biology:#1f9d55;
+    --math:#7a3fb0; --bangla:#c23b62; --english:#0f8f7c; --ict:#8a7a0a;
+    --done:#1f9d55; --warn:#c62f2f;
   }
   *{box-sizing:border-box; margin:0; padding:0;}
   html,body{background:var(--bg); color:var(--ink); font-family:'Inter','Noto Sans Bengali',sans-serif; min-height:100%;}
@@ -89,7 +89,7 @@
     text-transform:uppercase; margin-bottom:6px; display:block;
   }
   .id-block h1{font-size:clamp(20px,4vw,28px); font-weight:700;}
-  .id-block .sub{color:var(--muted); font-size:13px; margin-top:4px;}
+  .id-block .sub{color:var(--muted); font-size:14px; margin-top:4px;}
   .sync-pill{
     font-family:'JetBrains Mono',monospace; font-size:11px; padding:5px 10px; border-radius:20px;
     border:1px solid var(--border); color:var(--muted); display:flex; align-items:center; gap:6px;
@@ -122,6 +122,28 @@
     font-weight:600;
   }
 
+  .timer-wrap{
+    background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:18px;
+    margin-bottom:20px; text-align:center;
+  }
+  .timer-display{
+    font-size:52px; font-weight:700; color:var(--physics); margin:10px 0 18px; letter-spacing:0.02em;
+  }
+  .timer-display.ringing{ color:var(--warn); animation:pulse 1s infinite; }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+  .timer-presets{ display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-bottom:12px; }
+  .preset-btn{
+    background:var(--panel2); border:1px solid var(--border); color:var(--ink); padding:9px 14px;
+    border-radius:7px; font-size:13.5px; cursor:pointer; font-weight:500;
+  }
+  .preset-btn.active{ background:var(--physics); color:#fff; border-color:var(--physics); font-weight:600; }
+  .timer-custom{ display:flex; gap:8px; justify-content:center; margin-bottom:16px; }
+  .timer-custom input{
+    width:170px; background:var(--panel2); border:1px solid var(--border); color:var(--ink);
+    padding:9px 10px; border-radius:6px; font-size:14.5px; text-align:center;
+  }
+  .timer-controls{ display:flex; gap:10px; justify-content:center; }
+
   .leaderboard-wrap{
     background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:16px;
     margin-bottom:20px;
@@ -131,7 +153,7 @@
   }
   .lb-row:last-child{border-bottom:none;}
   .lb-rank{width:22px; font-family:'JetBrains Mono',monospace; font-weight:700; color:var(--muted); font-size:13px; flex-shrink:0;}
-  .lb-name{flex:1; font-size:13.5px; font-weight:500; min-width:0;}
+  .lb-name{flex:1; font-size:15px; font-weight:500; min-width:0;}
   .lb-name.me{color:var(--physics);}
   .lb-bar-wrap{flex:1.4; background:var(--panel2); border-radius:4px; height:7px; overflow:hidden; border:1px solid var(--border);}
   .lb-bar-fill{height:100%; background:linear-gradient(90deg,var(--physics),var(--done));}
@@ -146,8 +168,8 @@
   .gauge .pct{font-size:28px; font-weight:700; font-family:'JetBrains Mono',monospace;}
   .gauge .pct-lbl{font-size:10px; color:var(--muted); letter-spacing:0.1em; text-transform:uppercase;}
   .status-block{flex:1; min-width:200px;}
-  .status-block .status-title{font-size:17px; font-weight:600; margin-bottom:6px;}
-  .status-block .status-desc{color:var(--muted); font-size:13px; line-height:1.5;}
+  .status-block .status-title{font-size:18.5px; font-weight:600; margin-bottom:6px;}
+  .status-block .status-desc{color:var(--muted); font-size:14.5px; line-height:1.6;}
 
   .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:14px;}
   .card{background:var(--panel); border:1px solid var(--border); border-radius:10px; overflow:hidden;}
@@ -156,8 +178,8 @@
     background:color-mix(in srgb, var(--sub-color) 18%, transparent); color:var(--sub-color);
     font-family:'JetBrains Mono',monospace; font-weight:700; font-size:14px; flex-shrink:0;}
   .card .titles{flex:1; min-width:0;}
-  .card .titles .name{font-weight:600; font-size:14.5px;}
-  .card .titles .count{color:var(--muted); font-size:11.5px; margin-top:2px; font-family:'JetBrains Mono',monospace;}
+  .card .titles .name{font-weight:600; font-size:15.5px;}
+  .card .titles .count{color:var(--muted); font-size:12.5px; margin-top:2px; font-family:'JetBrains Mono',monospace;}
   .card .pct{font-family:'JetBrains Mono',monospace; font-weight:700; font-size:15px; color:var(--sub-color); flex-shrink:0;}
   .card .chev{color:var(--muted); transition:transform 0.25s ease; flex-shrink:0;}
   .card.open .chev{transform:rotate(180deg);}
@@ -168,12 +190,12 @@
   .chapter{display:flex; align-items:center; gap:10px; padding:8px 4px; border-bottom:1px dashed var(--border);}
   .chapter:last-of-type{border-bottom:none;}
   .chapter input[type=checkbox]{width:18px; height:18px; accent-color:var(--sub-color); flex-shrink:0; cursor:pointer;}
-  .chapter .cname{flex:1; font-size:13.5px; line-height:1.4;}
+  .chapter .cname{flex:1; font-size:15px; line-height:1.5;}
   .chapter.done .cname{color:var(--muted); text-decoration:line-through;}
   .chapter .del{background:none; border:none; color:var(--muted); cursor:pointer; font-size:15px; padding:2px 6px; flex-shrink:0;}
   .chapter .del:hover{color:var(--warn);}
   .add-row{display:flex; gap:8px; margin-top:10px;}
-  .add-row input{flex:1; background:var(--panel2); border:1px solid var(--border); color:var(--ink); padding:8px 10px; border-radius:6px; font-size:13px;}
+  .add-row input{flex:1; background:var(--panel2); border:1px solid var(--border); color:var(--ink); padding:9px 10px; border-radius:6px; font-size:14.5px;}
   .add-row button{background:var(--sub-color); color:#0a121f; border:none; border-radius:6px; padding:8px 14px; font-weight:600; font-size:13px; cursor:pointer; flex-shrink:0;}
 
   footer{max-width:960px; margin:38px auto 0; padding:20px 18px 0; border-top:1px solid var(--border);
@@ -271,6 +293,31 @@
       <div class="status-block">
         <div class="status-title" id="statusTitle">প্রস্তুতি শুরু হয়নি</div>
         <div class="status-desc" id="statusDesc">প্রতিটি সাবজেক্ট খুলে অধ্যায়গুলো চেক করা শুরু করুন।</div>
+      </div>
+    </div>
+
+    <div class="timer-wrap">
+      <h2 style="font-size:16px; margin-bottom:2px;">পড়ার টাইমার</h2>
+      <p style="color:var(--muted); font-size:13px; margin-bottom:14px;">সময় সিলেক্ট করে শুরু করো, সময় শেষ হলে শব্দ ও নোটিফিকেশন দেবে</p>
+
+      <div class="timer-display mono" id="timerDisplay">25:00</div>
+
+      <div class="timer-presets" id="timerPresets">
+        <button class="preset-btn" data-min="10">১০ মিনিট</button>
+        <button class="preset-btn active" data-min="25">২৫ মিনিট</button>
+        <button class="preset-btn" data-min="45">৪৫ মিনিট</button>
+        <button class="preset-btn" data-min="60">৬০ মিনিট</button>
+      </div>
+
+      <div class="timer-custom">
+        <input type="number" id="customMinutes" placeholder="নিজের মতো (মিনিট)" min="1" max="240">
+        <button class="btn" id="setCustomBtn">সেট করো</button>
+      </div>
+
+      <div class="timer-controls">
+        <button class="btn primary" id="timerStartBtn">শুরু করো</button>
+        <button class="btn" id="timerPauseBtn" style="display:none;">থামাও</button>
+        <button class="btn warn" id="timerResetBtn">রিসেট</button>
       </div>
     </div>
 
@@ -804,6 +851,116 @@ function loadAdminData(){
     console.error(err);
   });
 }
+
+// ---------------- STUDY TIMER ----------------
+let timerTotalSeconds = 25 * 60;
+let timerRemaining = timerTotalSeconds;
+let timerInterval = null;
+let timerRunning = false;
+
+function formatTime(sec){
+  const m = Math.floor(sec/60).toString().padStart(2,'0');
+  const s = (sec%60).toString().padStart(2,'0');
+  return m+':'+s;
+}
+
+function renderTimerDisplay(){
+  document.getElementById('timerDisplay').textContent = formatTime(Math.max(0, timerRemaining));
+}
+
+document.querySelectorAll('.preset-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    if(timerRunning) return;
+    document.querySelectorAll('.preset-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    const min = parseInt(btn.dataset.min, 10);
+    timerTotalSeconds = min*60;
+    timerRemaining = timerTotalSeconds;
+    renderTimerDisplay();
+  });
+});
+
+document.getElementById('setCustomBtn').addEventListener('click', ()=>{
+  if(timerRunning) return;
+  const val = parseInt(document.getElementById('customMinutes').value, 10);
+  if(!val || val < 1){ return; }
+  document.querySelectorAll('.preset-btn').forEach(b=>b.classList.remove('active'));
+  timerTotalSeconds = val*60;
+  timerRemaining = timerTotalSeconds;
+  renderTimerDisplay();
+});
+
+function playAlarmSound(){
+  try{
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    let time = ctx.currentTime;
+    for(let i=0;i<6;i++){
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.0001, time);
+      gain.gain.exponentialRampToValueAtTime(0.3, time+0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, time+0.35);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(time); osc.stop(time+0.4);
+      time += 0.55;
+    }
+  }catch(e){ console.error('Audio failed:', e); }
+}
+
+function timerFinished(){
+  timerRunning = false;
+  clearInterval(timerInterval);
+  document.getElementById('timerDisplay').classList.add('ringing');
+  document.getElementById('timerStartBtn').style.display = 'inline-block';
+  document.getElementById('timerStartBtn').textContent = 'আবার শুরু করো';
+  document.getElementById('timerPauseBtn').style.display = 'none';
+  playAlarmSound();
+  if(navigator.vibrate) navigator.vibrate([400,200,400,200,400]);
+  if('Notification' in window && Notification.permission === 'granted'){
+    new Notification('সময় শেষ! ⏰', { body: 'তোমার পড়ার সময় শেষ হয়েছে।' });
+  }
+  alert('⏰ সময় শেষ! পড়ার সেশন সম্পন্ন হয়েছে।');
+}
+
+document.getElementById('timerStartBtn').addEventListener('click', ()=>{
+  if('Notification' in window && Notification.permission === 'default'){
+    Notification.requestPermission();
+  }
+  document.getElementById('timerDisplay').classList.remove('ringing');
+  if(timerRemaining <= 0){ timerRemaining = timerTotalSeconds; }
+  timerRunning = true;
+  document.getElementById('timerStartBtn').style.display = 'none';
+  document.getElementById('timerPauseBtn').style.display = 'inline-block';
+  clearInterval(timerInterval);
+  timerInterval = setInterval(()=>{
+    timerRemaining--;
+    renderTimerDisplay();
+    if(timerRemaining <= 0){ timerFinished(); }
+  }, 1000);
+});
+
+document.getElementById('timerPauseBtn').addEventListener('click', ()=>{
+  timerRunning = false;
+  clearInterval(timerInterval);
+  document.getElementById('timerPauseBtn').style.display = 'none';
+  document.getElementById('timerStartBtn').style.display = 'inline-block';
+  document.getElementById('timerStartBtn').textContent = 'আবার চালু করো';
+});
+
+document.getElementById('timerResetBtn').addEventListener('click', ()=>{
+  timerRunning = false;
+  clearInterval(timerInterval);
+  timerRemaining = timerTotalSeconds;
+  renderTimerDisplay();
+  document.getElementById('timerDisplay').classList.remove('ringing');
+  document.getElementById('timerStartBtn').style.display = 'inline-block';
+  document.getElementById('timerStartBtn').textContent = 'শুরু করো';
+  document.getElementById('timerPauseBtn').style.display = 'none';
+});
+
+renderTimerDisplay();
 
 initStudent();
 
