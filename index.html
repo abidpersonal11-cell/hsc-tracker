@@ -185,6 +185,15 @@
   .lb-rank{width:24px; font-family:'JetBrains Mono',monospace; font-weight:700; color:var(--muted); font-size:13px; flex-shrink:0;}
   .lb-name{flex:1; font-size:15px; font-weight:500; min-width:0;}
   .lb-name.me{color:var(--accent); font-weight:700;}
+  .live-dot{
+    display:inline-block; width:8px; height:8px; border-radius:50%; background:#22c55e;
+    margin-right:6px; box-shadow:0 0 0 rgba(34,197,94,0.5); animation:liveDotPulse 1.6s infinite;
+  }
+  @keyframes liveDotPulse{
+    0%{ box-shadow:0 0 0 0 rgba(34,197,94,0.5); }
+    70%{ box-shadow:0 0 0 6px rgba(34,197,94,0); }
+    100%{ box-shadow:0 0 0 0 rgba(34,197,94,0); }
+  }
   .lb-bar-wrap{flex:1.4; background:var(--panel2); border-radius:4px; height:7px; overflow:hidden;}
   .lb-bar-fill{height:100%; background:linear-gradient(90deg,var(--accent),var(--accent2));}
   .lb-pct{font-family:'JetBrains Mono',monospace; font-weight:700; font-size:13px; width:38px; text-align:right; flex-shrink:0; color:var(--accent);}
@@ -688,6 +697,7 @@ function startSync(){
       localStorage.setItem('hsc-group-student-name', myName);
     }
     document.getElementById('studentNameDisplay').textContent = myName;
+    updateLeaderboardPresence();
   });
 
   myRef.on('value', snap=>{
@@ -711,12 +721,25 @@ function startSync(){
   startLeaderboard();
 }
 
+function updateLeaderboardPresence(){
+  if(!myId) return;
+  db.ref('leaderboard/' + myId).update({
+    isStudying: timerRunning,
+    timerEndAt: timerRunning ? timerEndAt : null
+  });
+}
+
+let leaderboardExpanded = false;
+let leaderboardRowsCache = [];
+
 function startLeaderboard(){
   db.ref('leaderboard').on('value', snap=>{
     const all = snap.val() || {};
     const rows = Object.entries(all).map(([id, s])=>({
-      id, name: s.name || '—', pct: s.pct || 0
+      id, name: s.name || '—', pct: s.pct || 0,
+      isStudying: !!s.isStudying, timerEndAt: s.timerEndAt || null
     })).sort((a,b)=>b.pct - a.pct);
+    leaderboardRowsCache = rows;
     renderLeaderboard(rows);
   }, err=>{ console.error(err); });
 }
@@ -728,19 +751,34 @@ function renderLeaderboard(rows){
     list.innerHTML = '<div style="padding:10px; color:var(--muted); font-size:13px;">এখনো কেউ শুরু করেনি।</div>';
     return;
   }
-  rows.forEach((r,i)=>{
+  const visibleRows = leaderboardExpanded ? rows : rows.slice(0, 2);
+  visibleRows.forEach((r,i)=>{
     const row = document.createElement('div');
     row.className = 'lb-row';
     const isMe = r.id === myId;
     const medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1);
+    const live = r.isStudying && r.timerEndAt && Date.now() < r.timerEndAt;
+    const liveDot = live ? '<span class="live-dot" title="এখন পড়ছে"></span>' : '';
     row.innerHTML = `
       <div class="lb-rank">${medal}</div>
-      <div class="lb-name ${isMe?'me':''}">${r.name}${isMe?' (তুমি)':''}</div>
+      <div class="lb-name ${isMe?'me':''}">${liveDot}${r.name}${isMe?' (তুমি)':''}</div>
       <div class="lb-bar-wrap"><div class="lb-bar-fill" style="width:${r.pct}%"></div></div>
       <div class="lb-pct">${r.pct}%</div>
     `;
     list.appendChild(row);
   });
+
+  if(rows.length > 2){
+    const toggleBtn = document.createElement('button');
+    toggleBtn.className = 'btn';
+    toggleBtn.style.cssText = 'margin-top:10px; width:100%; font-size:12.5px;';
+    toggleBtn.textContent = leaderboardExpanded ? '▲ কম দেখাও' : `▼ আরও দেখো (${rows.length - 2} জন)`;
+    toggleBtn.addEventListener('click', ()=>{
+      leaderboardExpanded = !leaderboardExpanded;
+      renderLeaderboard(leaderboardRowsCache);
+    });
+    list.appendChild(toggleBtn);
+  }
 }
 
 function subjectPercent(subj){
@@ -1100,6 +1138,7 @@ function timerFinished(){
   timerRemaining = 0;
   flushSessionElapsed();
   saveTimerState();
+  updateLeaderboardPresence();
   document.getElementById('timerDisplay').classList.add('ringing');
   document.getElementById('timerStartBtn').style.display = 'inline-block';
   document.getElementById('timerStartBtn').textContent = '▶ আবার শুরু করো';
@@ -1141,6 +1180,7 @@ function startTimerAction(){
   startTickInterval();
   startKeepAlive();
   saveTimerState();
+  updateLeaderboardPresence();
 }
 
 function pauseTimerAction(){
@@ -1150,6 +1190,7 @@ function pauseTimerAction(){
   stopKeepAlive();
   flushSessionElapsed();
   saveTimerState();
+  updateLeaderboardPresence();
   renderTimerDisplay();
   document.getElementById('timerPauseBtn').style.display = 'none';
   document.getElementById('timerStartBtn').style.display = 'inline-block';
@@ -1168,6 +1209,7 @@ document.getElementById('timerResetBtn').addEventListener('click', ()=>{
   timerRemaining = timerTotalSeconds;
   timerEndAt = null;
   saveTimerState();
+  updateLeaderboardPresence();
   renderTimerDisplay();
   document.getElementById('timerDisplay').classList.remove('ringing');
   document.getElementById('timerStartBtn').style.display = 'inline-block';
