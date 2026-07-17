@@ -357,6 +357,10 @@
         <button class="btn warn" id="timerResetBtn">রিসেট</button>
       </div>
 
+      <button class="btn" id="floatTimerBtn" style="margin-top:10px;">🖼️ ভাসমান টাইমার (অন্য অ্যাপে গেলেও দেখা যাবে)</button>
+      <canvas id="pipCanvas" width="320" height="180" style="display:none;"></canvas>
+      <video id="pipVideo" muted playsinline style="display:none; width:1px; height:1px;"></video>
+
       <div class="study-history">
         <h3 style="font-size:13.5px; color:var(--muted); margin:18px 0 10px; text-align:left; font-weight:600;">গত ৭ দিনের পড়াশোনা</h3>
         <div id="studyHistoryList"></div>
@@ -945,11 +949,54 @@ function loadAdminData(){
 }
 
 // ---------------- STUDY TIMER ----------------
+// Timestamp-based (not tick-counted) so it stays accurate even if the browser
+// throttles this tab while you're on another site/tab, and catches up the
+// moment you switch back or reopen it.
 let timerTotalSeconds = 25 * 60;
-let timerRemaining = timerTotalSeconds;
+let timerRemaining = timerTotalSeconds;   // authoritative value while paused/stopped
+let timerEndAt = null;                    // authoritative epoch-ms while running
 let timerInterval = null;
 let timerRunning = false;
-let sessionAnchor = timerRemaining; // timerRemaining value at last start/resume, used to measure elapsed study time
+let lastAccountedAt = null;               // last point we flushed elapsed study-seconds from
+let sharedAudioCtx = null;
+let keepAliveOsc = null, keepAliveGain = null;
+
+const TIMER_LS_KEY = 'hsc-study-timer-state';
+
+function saveTimerState(){
+  try{
+    localStorage.setItem(TIMER_LS_KEY, JSON.stringify({
+      timerTotalSeconds, timerRemaining, timerEndAt, timerRunning
+    }));
+  }catch(e){}
+}
+
+function loadTimerState(){
+  try{
+    const raw = localStorage.getItem(TIMER_LS_KEY);
+    if(!raw) return;
+    const s = JSON.parse(raw);
+    timerTotalSeconds = s.timerTotalSeconds || timerTotalSeconds;
+    if(s.timerRunning && s.timerEndAt){
+      timerEndAt = s.timerEndAt;
+      timerRunning = true;
+      lastAccountedAt = Date.now();
+      startTickInterval();
+      startKeepAlive();
+      document.getElementById('timerStartBtn').style.display = 'none';
+      document.getElementById('timerPauseBtn').style.display = 'inline-block';
+    } else {
+      timerRemaining = s.timerRemaining != null ? s.timerRemaining : timerTotalSeconds;
+    }
+  }catch(e){}
+}
+
+function currentRemaining(){
+  if(timerRunning && timerEndAt){
+    return Math.max(0, Math.round((timerEndAt - Date.now())/1000));
+  }
+  return timerRemaining;
+}
 
 function formatTime(sec){
   const m = Math.floor(sec/60).toString().padStart(2,'0');
@@ -958,13 +1005,47 @@ function formatTime(sec){
 }
 
 function renderTimerDisplay(){
-  document.getElementById('timerDisplay').textContent = formatTime(Math.max(0, timerRemaining));
+  document.getElementById('timerDisplay').textContent = formatTime(currentRemaining());
 }
 
+// Flushes study-seconds accumulated since the last flush point into Firebase.
 function flushSessionElapsed(){
-  const elapsed = sessionAnchor - timerRemaining;
+  if(lastAccountedAt == null) return;
+  const elapsed = Math.round((Date.now() - lastAccountedAt)/1000);
   if(elapsed > 0){ addStudySeconds(elapsed); }
-  sessionAnchor = timerRemaining;
+  lastAccountedAt = Date.now();
+}
+
+function getAudioCtx(){
+  if(!sharedAudioCtx){
+    sharedAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if(sharedAudioCtx.state === 'suspended'){ sharedAudioCtx.resume(); }
+  return sharedAudioCtx;
+}
+
+// Plays a near-silent continuous tone while the timer runs. Browsers are much
+// less likely to fully throttle/suspend a tab that's actively producing audio,
+// which keeps our countdown ticking closer to on-time even in a background tab.
+function startKeepAlive(){
+  try{
+    const ctx = getAudioCtx();
+    if(keepAliveOsc) return;
+    keepAliveOsc = ctx.createOscillator();
+    keepAliveGain = ctx.createGain();
+    keepAliveGain.gain.value = 0.0008;
+    keepAliveOsc.frequency.value = 40;
+    keepAliveOsc.connect(keepAliveGain);
+    keepAliveGain.connect(ctx.destination);
+    keepAliveOsc.start();
+  }catch(e){ console.error('Keep-alive audio failed:', e); }
+}
+
+function stopKeepAlive(){
+  try{
+    if(keepAliveOsc){ keepAliveOsc.stop(); keepAliveOsc.disconnect(); keepAliveOsc = null; }
+    if(keepAliveGain){ keepAliveGain.disconnect(); keepAliveGain = null; }
+  }catch(e){}
 }
 
 document.querySelectorAll('.preset-btn').forEach(btn=>{
@@ -975,8 +1056,8 @@ document.querySelectorAll('.preset-btn').forEach(btn=>{
     const min = parseInt(btn.dataset.min, 10);
     timerTotalSeconds = min*60;
     timerRemaining = timerTotalSeconds;
-    sessionAnchor = timerRemaining;
     renderTimerDisplay();
+    saveTimerState();
   });
 });
 
@@ -987,13 +1068,13 @@ document.getElementById('setCustomBtn').addEventListener('click', ()=>{
   document.querySelectorAll('.preset-btn').forEach(b=>b.classList.remove('active'));
   timerTotalSeconds = val*60;
   timerRemaining = timerTotalSeconds;
-  sessionAnchor = timerRemaining;
   renderTimerDisplay();
+  saveTimerState();
 });
 
 function playAlarmSound(){
   try{
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = getAudioCtx();
     let time = ctx.currentTime;
     for(let i=0;i<6;i++){
       const osc = ctx.createOscillator();
@@ -1010,10 +1091,17 @@ function playAlarmSound(){
   }catch(e){ console.error('Audio failed:', e); }
 }
 
+let timerHasFinishedThisRun = false;
+
 function timerFinished(){
+  if(timerHasFinishedThisRun) return;
+  timerHasFinishedThisRun = true;
   timerRunning = false;
   clearInterval(timerInterval);
+  stopKeepAlive();
+  timerRemaining = 0;
   flushSessionElapsed();
+  saveTimerState();
   document.getElementById('timerDisplay').classList.add('ringing');
   document.getElementById('timerStartBtn').style.display = 'inline-block';
   document.getElementById('timerStartBtn').textContent = '▶ আবার শুরু করো';
@@ -1026,45 +1114,131 @@ function timerFinished(){
   alert('⏰ সময় শেষ! পড়ার সেশন সম্পন্ন হয়েছে।');
 }
 
+function startTickInterval(){
+  clearInterval(timerInterval);
+  timerInterval = setInterval(()=>{
+    const rem = currentRemaining();
+    renderTimerDisplay();
+    // periodic flush every ~60s so we don't lose a whole session's worth of
+    // study-time if the tab gets closed without pausing
+    if(lastAccountedAt != null && Date.now() - lastAccountedAt >= 60000){
+      flushSessionElapsed();
+    }
+    if(rem <= 0){ timerFinished(); }
+  }, 1000);
+}
+
 document.getElementById('timerStartBtn').addEventListener('click', ()=>{
   if('Notification' in window && Notification.permission === 'default'){
     Notification.requestPermission();
   }
   document.getElementById('timerDisplay').classList.remove('ringing');
   if(timerRemaining <= 0){ timerRemaining = timerTotalSeconds; }
-  sessionAnchor = timerRemaining;
+  timerEndAt = Date.now() + timerRemaining*1000;
+  lastAccountedAt = Date.now();
   timerRunning = true;
+  timerHasFinishedThisRun = false;
   document.getElementById('timerStartBtn').style.display = 'none';
   document.getElementById('timerPauseBtn').style.display = 'inline-block';
-  clearInterval(timerInterval);
-  timerInterval = setInterval(()=>{
-    timerRemaining--;
-    renderTimerDisplay();
-    if(timerRemaining <= 0){ timerFinished(); }
-  }, 1000);
+  startTickInterval();
+  startKeepAlive();
+  saveTimerState();
 });
 
 document.getElementById('timerPauseBtn').addEventListener('click', ()=>{
+  timerRemaining = currentRemaining();
   timerRunning = false;
   clearInterval(timerInterval);
+  stopKeepAlive();
   flushSessionElapsed();
+  saveTimerState();
+  renderTimerDisplay();
   document.getElementById('timerPauseBtn').style.display = 'none';
   document.getElementById('timerStartBtn').style.display = 'inline-block';
   document.getElementById('timerStartBtn').textContent = '▶ আবার চালু করো';
 });
 
 document.getElementById('timerResetBtn').addEventListener('click', ()=>{
+  timerRemaining = currentRemaining();
   timerRunning = false;
   clearInterval(timerInterval);
+  stopKeepAlive();
   flushSessionElapsed();
   timerRemaining = timerTotalSeconds;
-  sessionAnchor = timerRemaining;
+  timerEndAt = null;
+  saveTimerState();
   renderTimerDisplay();
   document.getElementById('timerDisplay').classList.remove('ringing');
   document.getElementById('timerStartBtn').style.display = 'inline-block';
   document.getElementById('timerStartBtn').textContent = '▶ শুরু করো';
   document.getElementById('timerPauseBtn').style.display = 'none';
 });
+
+// Catch up immediately when the tab regains focus/visibility — this covers
+// cases where background throttling delayed our setInterval ticks.
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState === 'visible' && timerRunning){
+    renderTimerDisplay();
+    if(currentRemaining() <= 0){ timerFinished(); }
+  }
+});
+
+// ---------------- FLOATING (PICTURE-IN-PICTURE) TIMER ----------------
+// Draws the countdown onto a canvas, feeds it into a hidden <video> as a fake
+// "video", then uses the browser's native video Picture-in-Picture feature to
+// keep it floating on top of other apps. This works because Android Chrome
+// supports PiP for actual <video> elements (just not arbitrary floating HTML).
+let pipCanvas, pipCtx, pipVideoEl, pipDrawInterval;
+
+function setupPipElements(){
+  pipCanvas = document.getElementById('pipCanvas');
+  pipCtx = pipCanvas.getContext('2d');
+  pipVideoEl = document.getElementById('pipVideo');
+  pipVideoEl.addEventListener('leavepictureinpicture', ()=>{
+    clearInterval(pipDrawInterval);
+  });
+}
+
+function drawPipFrame(){
+  const w = pipCanvas.width, h = pipCanvas.height;
+  const ctx = pipCtx;
+  const grad = ctx.createLinearGradient(0,0,w,h);
+  grad.addColorStop(0, '#4f46e5');
+  grad.addColorStop(1, '#7c6bf0');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,w,h);
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 56px monospace';
+  ctx.fillText(formatTime(currentRemaining()), w/2, h/2 - 12);
+  ctx.font = '15px sans-serif';
+  ctx.fillText(timerRunning ? 'পড়ার টাইমার চলছে' : 'টাইমার থামানো আছে', w/2, h/2 + 38);
+}
+
+async function enterFloatingTimer(){
+  if(!('pictureInPictureEnabled' in document) || !document.pictureInPictureEnabled){
+    alert('তোমার ব্রাউজারে ভাসমান টাইমার সাপোর্ট নেই। সর্বশেষ Chrome ব্রাউজার দিয়ে চেষ্টা করো।');
+    return;
+  }
+  if(!pipCanvas) setupPipElements();
+  drawPipFrame();
+  try{
+    const stream = pipCanvas.captureStream();
+    pipVideoEl.srcObject = stream;
+    await pipVideoEl.play();
+    await pipVideoEl.requestPictureInPicture();
+    clearInterval(pipDrawInterval);
+    pipDrawInterval = setInterval(drawPipFrame, 1000);
+  }catch(e){
+    console.error('PiP failed:', e);
+    alert('ভাসমান টাইমার চালু করা গেল না। ব্রাউজার/ডিভাইস সাপোর্ট নাও করতে পারে।');
+  }
+}
+
+document.getElementById('floatTimerBtn').addEventListener('click', enterFloatingTimer);
+
+loadTimerState();
 
 renderTimerDisplay();
 
