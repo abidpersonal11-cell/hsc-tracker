@@ -149,20 +149,21 @@
   }
   .timer-display.ringing{ color:var(--warn); animation:pulse 1s infinite; }
   @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:0.4;} }
-  .timer-presets{ display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-bottom:14px; }
+  .timer-presets{ display:flex; gap:6px; justify-content:center; flex-wrap:wrap; margin-bottom:12px; align-items:center; }
   .preset-btn{
-    background:var(--panel2); border:1px solid var(--border); color:var(--ink); padding:9px 16px;
-    border-radius:999px; font-size:13.5px; cursor:pointer; font-weight:500;
+    background:var(--panel2); border:1px solid var(--border); color:var(--ink); padding:8px 13px;
+    border-radius:999px; font-size:12.5px; cursor:pointer; font-weight:500; white-space:nowrap;
   }
   .preset-btn.active{ background:linear-gradient(135deg, var(--accent), var(--accent2)); color:#fff; border:none; font-weight:600; }
-  .timer-custom{ display:flex; gap:8px; justify-content:center; margin-bottom:18px; }
-  .timer-custom input{
-    width:170px; background:var(--panel2); border:1px solid var(--border); color:var(--ink);
-    padding:10px 12px; border-radius:999px; font-size:14.5px; text-align:center;
+  .timer-custom-inline{ display:inline-flex; gap:5px; align-items:center; }
+  .timer-custom-inline input{
+    width:64px; background:var(--panel2); border:1px solid var(--border); color:var(--ink);
+    padding:8px 8px; border-radius:999px; font-size:12.5px; text-align:center;
   }
-  .timer-custom .btn{background:#fff;}
-  .timer-controls{ display:flex; gap:10px; justify-content:center; }
-  .timer-controls .btn.primary{ padding:11px 26px; font-size:14.5px; }
+  .timer-custom-inline .btn{ background:#fff; padding:8px 13px; font-size:12.5px; }
+  .timer-controls{ display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-bottom:6px; }
+  .timer-controls .btn{ padding:10px 16px; font-size:13px; }
+  .timer-controls .btn.primary{ padding:10px 20px; font-size:13.5px; }
 
   .study-history{ text-align:left; }
   .history-row{ display:flex; align-items:center; gap:10px; padding:6px 2px; }
@@ -337,27 +338,24 @@
       <h2 style="font-size:16px; margin-bottom:2px;">পড়ার টাইমার</h2>
       <p style="color:var(--muted); font-size:13px; margin-bottom:14px;">টাইমার চালিয়ে পড়ো — একদিনে মোট ২ ঘণ্টা টাইমার-সময় পার হলে সেদিনের স্ট্রিক গণনা হবে</p>
 
-      <div class="timer-display mono" id="timerDisplay">25:00</div>
+      <div class="timer-display mono" id="timerDisplay">30:00</div>
 
       <div class="timer-presets" id="timerPresets">
-        <button class="preset-btn" data-min="10">১০ মিনিট</button>
-        <button class="preset-btn active" data-min="25">২৫ মিনিট</button>
-        <button class="preset-btn" data-min="45">৪৫ মিনিট</button>
-        <button class="preset-btn" data-min="60">৬০ মিনিট</button>
-      </div>
-
-      <div class="timer-custom">
-        <input type="number" id="customMinutes" placeholder="নিজের মতো (মিনিট)" min="1" max="240">
-        <button class="btn" id="setCustomBtn">সেট করো</button>
+        <button class="preset-btn active" data-min="30">৩০ মিনিট</button>
+        <button class="preset-btn" data-min="60">১ ঘণ্টা</button>
+        <button class="preset-btn" data-min="120">২ ঘণ্টা</button>
+        <span class="timer-custom-inline">
+          <input type="number" id="customMinutes" placeholder="মিনিট" min="1" max="240">
+          <button class="btn" id="setCustomBtn">কাস্টম</button>
+        </span>
       </div>
 
       <div class="timer-controls">
-        <button class="btn primary" id="timerStartBtn">▶ শুরু করো</button>
-        <button class="btn" id="timerPauseBtn" style="display:none;">থামাও</button>
-        <button class="btn warn" id="timerResetBtn">রিসেট</button>
+        <button class="btn primary" id="timerStartBtn">▶ শুরু</button>
+        <button class="btn" id="timerPauseBtn" style="display:none;">⏸ থামাও</button>
+        <button class="btn warn" id="timerResetBtn">↺ রিসেট</button>
+        <button class="btn" id="floatTimerBtn">🖼️ ভাসমান</button>
       </div>
-
-      <button class="btn" id="floatTimerBtn" style="margin-top:10px;">🖼️ ভাসমান টাইমার (অন্য অ্যাপে গেলেও দেখা যাবে)</button>
       <canvas id="pipCanvas" width="320" height="180" style="display:none;"></canvas>
       <video id="pipVideo" muted playsinline style="display:none; width:1px; height:1px;"></video>
 
@@ -952,7 +950,7 @@ function loadAdminData(){
 // Timestamp-based (not tick-counted) so it stays accurate even if the browser
 // throttles this tab while you're on another site/tab, and catches up the
 // moment you switch back or reopen it.
-let timerTotalSeconds = 25 * 60;
+let timerTotalSeconds = 30 * 60;
 let timerRemaining = timerTotalSeconds;   // authoritative value while paused/stopped
 let timerEndAt = null;                    // authoritative epoch-ms while running
 let timerInterval = null;
@@ -1128,7 +1126,7 @@ function startTickInterval(){
   }, 1000);
 }
 
-document.getElementById('timerStartBtn').addEventListener('click', ()=>{
+function startTimerAction(){
   if('Notification' in window && Notification.permission === 'default'){
     Notification.requestPermission();
   }
@@ -1143,9 +1141,9 @@ document.getElementById('timerStartBtn').addEventListener('click', ()=>{
   startTickInterval();
   startKeepAlive();
   saveTimerState();
-});
+}
 
-document.getElementById('timerPauseBtn').addEventListener('click', ()=>{
+function pauseTimerAction(){
   timerRemaining = currentRemaining();
   timerRunning = false;
   clearInterval(timerInterval);
@@ -1156,7 +1154,10 @@ document.getElementById('timerPauseBtn').addEventListener('click', ()=>{
   document.getElementById('timerPauseBtn').style.display = 'none';
   document.getElementById('timerStartBtn').style.display = 'inline-block';
   document.getElementById('timerStartBtn').textContent = '▶ আবার চালু করো';
-});
+}
+
+document.getElementById('timerStartBtn').addEventListener('click', startTimerAction);
+document.getElementById('timerPauseBtn').addEventListener('click', pauseTimerAction);
 
 document.getElementById('timerResetBtn').addEventListener('click', ()=>{
   timerRemaining = currentRemaining();
@@ -1197,6 +1198,18 @@ function setupPipElements(){
   pipVideoEl.addEventListener('leavepictureinpicture', ()=>{
     clearInterval(pipDrawInterval);
   });
+  // Let the floating window's own play/pause controls drive the real timer,
+  // so you can start/pause without switching back to this tab.
+  pipVideoEl.addEventListener('play', ()=>{
+    if(!timerRunning) startTimerAction();
+  });
+  pipVideoEl.addEventListener('pause', ()=>{
+    if(timerRunning) pauseTimerAction();
+  });
+  if('mediaSession' in navigator){
+    navigator.mediaSession.setActionHandler('play', ()=>{ if(!timerRunning) startTimerAction(); pipVideoEl.play(); });
+    navigator.mediaSession.setActionHandler('pause', ()=>{ if(timerRunning) pauseTimerAction(); pipVideoEl.pause(); });
+  }
 }
 
 function drawPipFrame(){
