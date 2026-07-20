@@ -390,7 +390,7 @@
         <button class="btn warn" id="timerResetBtn">↺ রিসেট</button>
         <button class="btn" id="floatTimerBtn">🖼️ ভাসমান</button>
       </div>
-      <canvas id="pipCanvas" width="200" height="112" style="display:none;"></canvas>
+      <canvas id="pipCanvas" width="67" height="37" style="display:none;"></canvas>
       <video id="pipVideo" muted playsinline style="display:none; width:1px; height:1px;"></video>
 
       <div class="study-history">
@@ -1375,10 +1375,8 @@ function drawPipFrame(){
   ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = 'bold 34px monospace';
-  ctx.fillText(formatTime(currentRemaining()), w/2, h/2 - 8);
-  ctx.font = '10px sans-serif';
-  ctx.fillText(timerRunning ? 'পড়ার টাইমার চলছে' : 'টাইমার থামানো আছে', w/2, h/2 + 24);
+  ctx.font = 'bold 15px monospace';
+  ctx.fillText(formatTime(currentRemaining()), w/2, h/2);
 }
 
 async function enterFloatingTimer(){
