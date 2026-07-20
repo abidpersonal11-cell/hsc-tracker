@@ -390,7 +390,7 @@
         <button class="btn warn" id="timerResetBtn">↺ রিসেট</button>
         <button class="btn" id="floatTimerBtn">🖼️ ভাসমান</button>
       </div>
-      <canvas id="pipCanvas" width="320" height="180" style="display:none;"></canvas>
+      <canvas id="pipCanvas" width="200" height="112" style="display:none;"></canvas>
       <video id="pipVideo" muted playsinline style="display:none; width:1px; height:1px;"></video>
 
       <div class="study-history">
@@ -703,11 +703,19 @@ function addStudySeconds(sec){
   if(!myRef || sec <= 0) return;
   const today = todayStr();
   const hist = Object.assign({}, state.studyHistory || {});
-  hist[today] = (hist[today] || 0) + sec;
+  const newTodayTotal = (hist[today] || 0) + sec;
+  hist[today] = newTodayTotal;
   state.studyHistory = hist;
 
-  const updates = { studyHistory: hist };
-  if(hist[today] >= 7200 && state.streak.lastDate !== today){
+  // IMPORTANT: only write today's leaf (studyHistory/<date>), never the whole
+  // studyHistory object. Firebase's update() fully replaces whatever value is
+  // given at a path, so writing the entire local `hist` object here would
+  // overwrite (and could permanently erase) any other days' totals already
+  // saved on the server if our local cache was ever a moment out of date
+  // (e.g. right after opening the app, or with more than one tab/device open).
+  const updates = {};
+  updates['studyHistory/' + today] = newTodayTotal;
+  if(newTodayTotal >= 7200 && state.streak.lastDate !== today){
     updates.streak = computeNewStreak(state.streak);
   }
   myRef.update(updates);
@@ -1241,6 +1249,8 @@ function timerFinished(){
   alert('⏰ সময় শেষ! পড়ার সেশন সম্পন্ন হয়েছে।');
 }
 
+let lastPresenceHeartbeatAt = null;
+
 function startTickInterval(){
   clearInterval(timerInterval);
   timerInterval = setInterval(()=>{
@@ -1250,6 +1260,16 @@ function startTickInterval(){
     // study-time if the tab gets closed without pausing
     if(lastAccountedAt != null && Date.now() - lastAccountedAt >= 60000){
       flushSessionElapsed();
+    }
+    // periodic presence heartbeat every ~15s. updateLeaderboardPresence() is
+    // normally only called at the moment start/pause/reset is clicked, so if
+    // that click happens before Firebase auth/myId is ready (e.g. right after
+    // opening the app), or another tab/device for the same account briefly
+    // overwrites it, the green "live" dot can silently stay off for the rest
+    // of the session. Re-sending it regularly makes it self-heal quickly.
+    if(timerRunning && (lastPresenceHeartbeatAt == null || Date.now() - lastPresenceHeartbeatAt >= 15000)){
+      lastPresenceHeartbeatAt = Date.now();
+      updateLeaderboardPresence();
     }
     if(rem <= 0){ timerFinished(); }
   }, 1000);
@@ -1355,10 +1375,10 @@ function drawPipFrame(){
   ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = 'bold 56px monospace';
-  ctx.fillText(formatTime(currentRemaining()), w/2, h/2 - 12);
-  ctx.font = '15px sans-serif';
-  ctx.fillText(timerRunning ? 'পড়ার টাইমার চলছে' : 'টাইমার থামানো আছে', w/2, h/2 + 38);
+  ctx.font = 'bold 34px monospace';
+  ctx.fillText(formatTime(currentRemaining()), w/2, h/2 - 8);
+  ctx.font = '10px sans-serif';
+  ctx.fillText(timerRunning ? 'পড়ার টাইমার চলছে' : 'টাইমার থামানো আছে', w/2, h/2 + 24);
 }
 
 async function enterFloatingTimer(){
