@@ -223,7 +223,7 @@
     box-shadow:0 4px 14px rgba(30,35,51,0.05);}
   .card .head{display:flex; align-items:center; gap:12px; padding:14px 16px; cursor:pointer; border-left:4px solid var(--sub-color, var(--physics));}
   .card .symbol{width:38px; height:38px; border-radius:10px; display:flex; align-items:center; justify-content:center;
-    background:color-mix(in srgb, var(--sub-color) 14%, white); color:var(--sub-color);
+    background:#eef0fb; background:color-mix(in srgb, var(--sub-color) 14%, white); color:var(--sub-color);
     font-family:'JetBrains Mono',monospace; font-weight:700; font-size:14px; flex-shrink:0;}
   .card .titles{flex:1; min-width:0;}
   .card .titles .name{font-weight:600; font-size:15.5px; color:#161a2e;}
@@ -280,6 +280,14 @@
   .admin-pct{font-family:'JetBrains Mono',monospace; font-weight:700; text-align:right;}
 
   .admin-detail{ padding:6px 14px 16px; background:var(--panel2); }
+
+  .admin-live-row{
+    display:flex; align-items:center; gap:10px; padding:9px 4px; border-bottom:1px dashed var(--border);
+  }
+  .admin-live-row:last-child{ border-bottom:none; }
+  .admin-live-name{ flex:1; font-size:14px; font-weight:600; min-width:0; }
+  .admin-live-time{ font-family:'JetBrains Mono',monospace; font-weight:700; font-size:13px; color:var(--accent); flex-shrink:0; }
+  .admin-live-empty{ padding:8px 4px; color:var(--muted); font-size:13px; }
   .admin-subject{ background:#fff; border-radius:10px; padding:10px 12px; margin-bottom:8px; }
   .admin-subject-head{ display:flex; align-items:center; gap:8px; margin-bottom:6px; }
   .admin-subject-symbol{ font-family:'JetBrains Mono',monospace; font-weight:700; font-size:12px; color:var(--accent); }
@@ -409,6 +417,12 @@
   </div>
 
   <div id="adminPanel">
+    <div class="admin-live-wrap" style="background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:16px 18px; margin-bottom:16px; box-shadow:0 8px 24px rgba(79,70,229,0.06);">
+      <h2 style="font-size:15.5px; margin-bottom:2px; color:var(--accent);">🟢 এখন কে পড়ছে (লাইভ)</h2>
+      <p style="color:var(--muted); font-size:12px; margin-bottom:10px;">শুধু তুমি এটা দেখতে পাচ্ছো — এটা কারো লিডারবোর্ডে দেখা যায় না।</p>
+      <div id="adminLiveList"></div>
+    </div>
+
     <h2 style="font-size:20px; margin-bottom:4px;">গ্রুপ ওভারভিউ</h2>
     <p style="color:var(--muted); font-size:13px; margin-bottom:16px;">সবার সামগ্রিক অগ্রগতি — রিয়েল-টাইমে আপডেট হয়। নামে ট্যাপ করলে প্রতিটা চ্যাপ্টারের বিস্তারিত দেখা যাবে।</p>
     <div style="background:var(--panel); border:1px solid var(--border); border-radius:10px; overflow:hidden;">
@@ -485,6 +499,15 @@ const DEFAULT_SUBJECTS = [
 
 function slugify(name){
   return name.trim().toLowerCase().replace(/[.#$\[\]\/\s]+/g,'-').replace(/[^a-z0-9\u0980-\u09FF-]/g,'') + '-' + Math.random().toString(36).slice(2,6);
+}
+
+// ব্যবহারকারীর দেওয়া যেকোনো টেক্সট (নাম, চ্যাপ্টারের নাম) innerHTML-এ বসানোর আগে
+// এটা দিয়ে sanitize করা হয়, যাতে কেউ <script> বা HTML ঢুকিয়ে অন্যের (বা এডমিনের)
+// ব্রাউজারে কোড চালাতে না পারে।
+function escapeHtml(str){
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : String(str);
+  return div.innerHTML;
 }
 
 function defaultSubjectsState(){
@@ -571,12 +594,17 @@ document.getElementById('authSubmit').addEventListener('click', ()=>{
 
   if(authMode === 'new'){
     if(!displayName){ showAuthError('প্রদর্শনের নাম লিখো।'); return; }
+    // createUser-এর পরপরই (এমনকি .then() চলার আগেই) auth-state বদলে গিয়ে
+    // startSync() চালু হয়ে যেতে পারে — তাই myName এখানেই, কল করার আগেই, সেট
+    // করে রাখছি, নইলে রেসকন্ডিশনে অ্যাকাউন্ট ফাঁকা নাম নিয়ে তৈরি হতে পারত।
+    const previousName = myName;
+    myName = displayName;
+    localStorage.setItem('hsc-group-student-name', myName);
     firebase.auth().createUserWithEmailAndPassword(email, pin)
-      .then(()=>{
-        myName = displayName;
-        localStorage.setItem('hsc-group-student-name', myName);
-      })
       .catch(err=>{
+        myName = previousName;
+        if(previousName) localStorage.setItem('hsc-group-student-name', previousName);
+        else localStorage.removeItem('hsc-group-student-name');
         if(err.code === 'auth/email-already-in-use'){
           showAuthError('এই ইউজারনেম আগে থেকেই আছে। অন্য একটা বেছে নাও, অথবা "আগের অ্যাকাউন্ট" ট্যাব দিয়ে লগইন করো।');
         } else {
@@ -610,7 +638,18 @@ document.getElementById('showUidBtn').addEventListener('click', ()=>{
 });
 
 function todayStr(){
-  return new Date().toISOString().slice(0,10);
+  // লোকাল (ডিভাইসের) ক্যালেন্ডার তারিখ ব্যবহার করছি, UTC না —
+  // toISOString() ব্যবহার করলে রাত ১২টা থেকে ভোর ৬টার মধ্যে (BD সময়ে
+  // ইতিমধ্যে পরের দিন হয়ে গেলেও UTC-তে তখনো আগের দিন) পড়ার সময়টা
+  // ভুল দিনের ঘরে জমা হয়ে যেত।
+  return localDateStr(new Date());
+}
+
+function localDateStr(d){
+  const y = d.getFullYear();
+  const m = (d.getMonth()+1).toString().padStart(2,'0');
+  const day = d.getDate().toString().padStart(2,'0');
+  return `${y}-${m}-${day}`;
 }
 
 function computeNewStreak(streak){
@@ -680,7 +719,7 @@ function renderStudyHistory(){
   for(let i=6; i>=0; i--){
     const d = new Date();
     d.setDate(d.getDate()-i);
-    const key = d.toISOString().slice(0,10);
+    const key = localDateStr(d);
     const label = d.toLocaleDateString('bn-BD', { weekday:'short', day:'numeric', month:'short' });
     days.push({ key, label, seconds: hist[key] || 0 });
   }
@@ -778,6 +817,18 @@ function updateLeaderboardPresence(){
     isStudying: timerRunning,
     timerEndAt: timerRunning ? timerEndAt : null
   });
+  // এটা "students" নোডে লেখা হচ্ছে, যেটা শুধু নিজে আর এডমিন পড়তে পারে
+  // (leaderboard নোড সবাই পড়তে পারে) — তাই "কতক্ষণ ধরে পড়ছে" এই বিস্তারিত
+  // তথ্যটা শুধু এডমিন প্যানেলেই দেখা যাবে, বাকি সবার কাছে না।
+  if(myRef){
+    myRef.update({
+      presence: {
+        isStudying: timerRunning,
+        sessionStartAt: timerRunning ? sessionStartAt : null,
+        timerEndAt: timerRunning ? timerEndAt : null
+      }
+    });
+  }
 }
 
 let leaderboardExpanded = false;
@@ -812,7 +863,7 @@ function renderLeaderboard(rows){
     const liveDot = live ? '<span class="live-dot" title="এখন পড়ছে"></span>' : '';
     row.innerHTML = `
       <div class="lb-rank">${medal}</div>
-      <div class="lb-name ${isMe?'me':''}">${liveDot}${r.name}${isMe?' (তুমি)':''}</div>
+      <div class="lb-name ${isMe?'me':''}">${liveDot}${escapeHtml(r.name)}${isMe?' (তুমি)':''}</div>
       <div class="lb-bar-wrap"><div class="lb-bar-fill" style="width:${r.pct}%"></div></div>
       <div class="lb-pct">${r.pct}%</div>
     `;
@@ -907,7 +958,7 @@ function render(){
       row.className = 'chapter' + (ch.done?' done':'');
       row.innerHTML = `
         <input type="checkbox" ${ch.done?'checked':''} data-toggle="${subj.id}|${cid}">
-        <div class="cname">${ch.name}</div>
+        <div class="cname">${escapeHtml(ch.name)}</div>
         <button class="del" data-del="${subj.id}|${cid}">✕</button>
       `;
       list.appendChild(row);
@@ -979,6 +1030,7 @@ document.getElementById('resetBtn').addEventListener('click', ()=>{
 
 // ---------------- ADMIN PANEL ----------------
 let adminOpen = false;
+let adminLiveTickInterval = null;
 document.getElementById('adminBtn').addEventListener('click', ()=>{
   if(!adminOpen){
     const pass = prompt('এডমিন পাসকোড দিন:');
@@ -988,11 +1040,14 @@ document.getElementById('adminBtn').addEventListener('click', ()=>{
     document.getElementById('adminPanel').classList.add('open');
     document.getElementById('adminBtn').textContent = 'নিজের ভিউ';
     loadAdminData();
+    clearInterval(adminLiveTickInterval);
+    adminLiveTickInterval = setInterval(()=>renderAdminLiveList(adminDataCache), 1000);
   } else {
     adminOpen = false;
     document.getElementById('mainView').style.display = 'block';
     document.getElementById('adminPanel').classList.remove('open');
     document.getElementById('adminBtn').textContent = 'এডমিন ভিউ';
+    clearInterval(adminLiveTickInterval);
   }
 });
 
@@ -1016,11 +1071,39 @@ function loadAdminData(){
     }).sort((a,b)=>b.pct - a.pct);
 
     renderAdminList(rows);
+    renderAdminLiveList(all);
   }, err=>{
     document.getElementById('adminList').innerHTML =
       '<div style="padding:16px; color:var(--warn); font-size:13px;">অ্যাক্সেস নেই — এই UID এডমিন হিসেবে সেট করা নেই (Firebase rules-এ YOUR_UID_HERE বসানো হয়েছে কিনা চেক করুন)।</div>';
     console.error(err);
   });
+}
+
+// শুধুমাত্র এডমিন প্যানেলে দেখা যায় — কে এখন পড়ছে, আর কতক্ষণ ধরে পড়ছে (লাইভ টিক করে)।
+// students/{uid}/presence থেকে ডেটা আসছে, যেটা leaderboard-এর মতো সবাই পড়তে পারে না —
+// শুধু নিজে ও এডমিন UID পড়তে পারে (Firebase rules অনুযায়ী)।
+function renderAdminLiveList(all){
+  const list = document.getElementById('adminLiveList');
+  if(!list) return;
+  const now = Date.now();
+  const active = Object.entries(all)
+    .map(([id, s])=>({ id, name: s.name || id, presence: s.presence || {} }))
+    .filter(r => r.presence.isStudying && r.presence.sessionStartAt && r.presence.timerEndAt && now < r.presence.timerEndAt)
+    .sort((a,b) => a.presence.sessionStartAt - b.presence.sessionStartAt); // সবচেয়ে বেশিক্ষণ ধরে পড়ছে যে, সে উপরে
+
+  if(!active.length){
+    list.innerHTML = '<div class="admin-live-empty">এই মুহূর্তে কেউ টাইমার চালু করে পড়ছে না।</div>';
+    return;
+  }
+  list.innerHTML = active.map(r=>{
+    const elapsed = Math.max(0, Math.round((now - r.presence.sessionStartAt)/1000));
+    return `
+      <div class="admin-live-row">
+        <span class="live-dot"></span>
+        <div class="admin-live-name">${escapeHtml(r.name)}</div>
+        <div class="admin-live-time">${formatTime(elapsed)}</div>
+      </div>`;
+  }).join('');
 }
 
 function renderAdminList(rows){
@@ -1040,7 +1123,7 @@ function renderAdminList(rows){
     head.className = 'admin-row';
     head.style.cursor = 'pointer';
     head.innerHTML = `
-      <div class="admin-name">${r.name}<div class="admin-updated">সর্বশেষ: ${updatedStr}</div></div>
+      <div class="admin-name">${escapeHtml(r.name)}<div class="admin-updated">সর্বশেষ: ${updatedStr}</div></div>
       <div class="admin-pct">${r.pct}%</div>
       <div class="admin-bar-wrap"><div class="admin-bar-fill" style="width:${r.pct}%"></div></div>
       <div class="admin-chev" style="margin-left:6px; color:var(--muted); transition:transform .2s;${isOpen?'transform:rotate(180deg);':''}">▾</div>
@@ -1062,7 +1145,7 @@ function renderAdminList(rows){
         const chapterRows = chapters.map(([cid,c])=>`
           <div class="admin-chapter ${c.done?'done':''}">
             <span class="admin-chapter-dot">${c.done ? '✅' : '⬜'}</span>
-            <span>${c.name}</span>
+            <span>${escapeHtml(c.name)}</span>
           </div>
         `).join('');
         return `
@@ -1092,6 +1175,7 @@ let timerEndAt = null;                    // authoritative epoch-ms while runnin
 let timerInterval = null;
 let timerRunning = false;
 let lastAccountedAt = null;               // last point we flushed elapsed study-seconds from
+let sessionStartAt = null;                // epoch-ms when the current continuous run started (for admin's live "কতক্ষণ ধরে পড়ছে" view)
 let sharedAudioCtx = null;
 let keepAliveOsc = null, keepAliveGain = null;
 
@@ -1100,7 +1184,7 @@ const TIMER_LS_KEY = 'hsc-study-timer-state';
 function saveTimerState(){
   try{
     localStorage.setItem(TIMER_LS_KEY, JSON.stringify({
-      timerTotalSeconds, timerRemaining, timerEndAt, timerRunning
+      timerTotalSeconds, timerRemaining, timerEndAt, timerRunning, sessionStartAt
     }));
   }catch(e){}
 }
@@ -1114,6 +1198,7 @@ function loadTimerState(){
     if(s.timerRunning && s.timerEndAt){
       timerEndAt = s.timerEndAt;
       timerRunning = true;
+      sessionStartAt = s.sessionStartAt || Date.now();
       lastAccountedAt = Date.now();
       startTickInterval();
       startKeepAlive();
@@ -1231,6 +1316,7 @@ function timerFinished(){
   if(timerHasFinishedThisRun) return;
   timerHasFinishedThisRun = true;
   timerRunning = false;
+  sessionStartAt = null;
   clearInterval(timerInterval);
   stopKeepAlive();
   timerRemaining = 0;
@@ -1283,6 +1369,7 @@ function startTimerAction(){
   if(timerRemaining <= 0){ timerRemaining = timerTotalSeconds; }
   timerEndAt = Date.now() + timerRemaining*1000;
   lastAccountedAt = Date.now();
+  sessionStartAt = Date.now();
   timerRunning = true;
   timerHasFinishedThisRun = false;
   document.getElementById('timerStartBtn').style.display = 'none';
@@ -1296,6 +1383,7 @@ function startTimerAction(){
 function pauseTimerAction(){
   timerRemaining = currentRemaining();
   timerRunning = false;
+  sessionStartAt = null;
   clearInterval(timerInterval);
   stopKeepAlive();
   flushSessionElapsed();
@@ -1313,6 +1401,7 @@ document.getElementById('timerPauseBtn').addEventListener('click', pauseTimerAct
 document.getElementById('timerResetBtn').addEventListener('click', ()=>{
   timerRemaining = currentRemaining();
   timerRunning = false;
+  sessionStartAt = null;
   clearInterval(timerInterval);
   stopKeepAlive();
   flushSessionElapsed();
