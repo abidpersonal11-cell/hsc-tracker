@@ -307,6 +307,11 @@
   .admin-chapter{ display:flex; align-items:center; gap:8px; font-size:13px; padding:2px 0; }
   .admin-chapter.done{ color:var(--muted); text-decoration:line-through; }
   .admin-chapter-dot{ flex-shrink:0; }
+  .admin-chapter-group{ margin-bottom:6px; }
+  .admin-group-head{ display:flex; align-items:center; gap:8px; font-weight:600; font-size:12.5px; color:var(--ink); padding:4px 0; }
+  .admin-group-count{ margin-left:auto; font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--muted); font-weight:400; }
+  .admin-group-body{ padding-left:10px; border-left:2px solid var(--border); display:flex; flex-direction:column; gap:4px; }
+  .admin-group-body .admin-chapter-group{ margin-top:4px; }
 
   @media (max-width:520px){
     header.top{justify-content:center; text-align:center;}
@@ -1059,23 +1064,31 @@ function render(){
         extraWrap.className = 'chapter-group open';
         extraWrap.innerHTML = `<div class="group-head"><span class="gname">অতিরিক্ত টপিক</span></div><div class="group-body"></div>`;
         const body = extraWrap.querySelector('.group-body');
-        extra.forEach(([cid, ch])=> body.appendChild(makeChapterRow(subj.id, cid, ch)));
+        extra.forEach(([cid, ch])=> body.appendChild(makeChapterRow(subj.id, cid, ch, true)));
         list.appendChild(extraWrap);
       }
     } else {
-      chapters.forEach(([cid, ch])=> list.appendChild(makeChapterRow(subj.id, cid, ch)));
+      chapters.forEach(([cid, ch])=> list.appendChild(makeChapterRow(subj.id, cid, ch, isAddedChapter(subj.id, cid))));
     }
     grid.appendChild(card);
   });
 }
 
-function makeChapterRow(subjId, cid, ch){
+// Firebase-এ সেভ হওয়া chapter id template থেকে আসা (sid+'-'+ছোট index) নাকি
+// পরে ব্যবহারকারীর নিজের যোগ করা (sid+'-'+Date.now(), অনেক বড় সংখ্যা) সেটা বোঝার জন্য।
+// শুধু ব্যবহারকারীর যোগ করা অধ্যায়ই ডিলিট করা যাবে; মূল সিলেবাসের অধ্যায় ডিলিট করা যাবে না।
+function isAddedChapter(subjId, cid){
+  const suffix = cid.slice(subjId.length + 1);
+  return !(/^\d+$/.test(suffix) && Number(suffix) < 100000);
+}
+
+function makeChapterRow(subjId, cid, ch, deletable){
   const row = document.createElement('div');
   row.className = 'chapter' + (ch.done?' done':'');
   row.innerHTML = `
     <input type="checkbox" ${ch.done?'checked':''} data-toggle="${subjId}|${cid}">
     <div class="cname">${escapeHtml(ch.name)}</div>
-    <button class="del" data-del="${subjId}|${cid}">✕</button>
+    ${deletable ? `<button class="del" data-del="${subjId}|${cid}">✕</button>` : ''}
   `;
   return row;
 }
@@ -1094,7 +1107,7 @@ function renderChapterNodes(nodes, subj, pathPrefix, containerEl, idxRef, usedId
       if(!ch) return;
       usedIds.add(cid);
       total++; if(ch.done) done++;
-      containerEl.appendChild(makeChapterRow(subj.id, cid, ch));
+      containerEl.appendChild(makeChapterRow(subj.id, cid, ch, false));
     } else if(node && node.group){
       const groupPath = pathPrefix+'>'+node.group;
       const isOpen = !!openGroups[groupPath];
@@ -1119,15 +1132,23 @@ function renderChapterNodes(nodes, subj, pathPrefix, containerEl, idxRef, usedId
 document.addEventListener('click', (e)=>{
   const groupHead = e.target.closest('.group-head');
   if(groupHead && groupHead.dataset.group){
-    openGroups[groupHead.dataset.group] = !openGroups[groupHead.dataset.group];
+    const path = groupHead.dataset.group;
+    const wasOpen = !!openGroups[path];
+    const parentPrefix = path.slice(0, path.lastIndexOf('>'));
+    Object.keys(openGroups).forEach(k=>{
+      if(k.slice(0, k.lastIndexOf('>')) === parentPrefix) openGroups[k] = false;
+    });
+    openGroups[path] = !wasOpen;
     render();
     return;
   }
   const head = e.target.closest('.head');
   if(head){
     const id = head.dataset.id;
-    const subj = state.subjects.find(s=>s.id===id);
-    subj._open = !subj._open;
+    const clicked = state.subjects.find(s=>s.id===id);
+    const wasOpen = !!clicked._open;
+    state.subjects.forEach(s=>{ s._open = false; });
+    clicked._open = !wasOpen;
     render();
     return;
   }
@@ -1261,6 +1282,36 @@ function renderAdminLiveList(all){
   }).join('');
 }
 
+// এডমিন প্যানেলে read-only গ্রুপড ভিউ (গদ্য/পদ্য/উপন্যাস/নাটক ইত্যাদি) — সবসময় খোলা, ক্লিক করে
+// খোলা/বন্ধ করার দরকার নেই যেহেতু এটা শুধু ওভারভিউ দেখার জন্য।
+function renderAdminChapterTree(nodes, subj, idxRef, usedIds){
+  let done=0, total=0, html='';
+  nodes.forEach(node=>{
+    if(typeof node === 'string'){
+      const cid = subj.id+'-'+idxRef.value;
+      idxRef.value++;
+      const ch = subj.chapters[cid];
+      if(!ch) return;
+      usedIds.add(cid);
+      total++; if(ch.done) done++;
+      html += `
+        <div class="admin-chapter ${ch.done?'done':''}">
+          <span class="admin-chapter-dot">${ch.done ? '✅' : '⬜'}</span>
+          <span>${escapeHtml(ch.name)}</span>
+        </div>`;
+    } else if(node && node.group){
+      const sub = renderAdminChapterTree(node.items, subj, idxRef, usedIds);
+      done += sub.done; total += sub.total;
+      html += `
+        <div class="admin-chapter-group">
+          <div class="admin-group-head"><span>${escapeHtml(node.group)}</span><span class="admin-group-count">${sub.done}/${sub.total}</span></div>
+          <div class="admin-group-body">${sub.html}</div>
+        </div>`;
+    }
+  });
+  return {html, done, total};
+}
+
 function renderAdminList(rows){
   const list = document.getElementById('adminList');
   list.innerHTML = '';
@@ -1293,16 +1344,30 @@ function renderAdminList(rows){
       const detail = document.createElement('div');
       detail.className = 'admin-detail';
       const studentData = adminDataCache[r.id] || {};
-      const subjects = studentData.subjects || [];
+      const subjects = migrateSubjects(studentData.subjects || []); // শুধু ডিসপ্লের জন্য মিলিয়ে নেওয়া, ছাত্রের ডেটা এখানে পাল্টানো হয় না
       detail.innerHTML = subjects.map(subj=>{
         const chapters = Object.entries(subj.chapters || {});
         const doneCount = chapters.filter(([,c])=>c.done).length;
-        const chapterRows = chapters.map(([cid,c])=>`
-          <div class="admin-chapter ${c.done?'done':''}">
-            <span class="admin-chapter-dot">${c.done ? '✅' : '⬜'}</span>
-            <span>${escapeHtml(c.name)}</span>
-          </div>
-        `).join('');
+        const template = DEFAULT_SUBJECTS.find(t=>t.id===subj.id);
+        let chapterHtml;
+        if(template && isGroupedTree(template.chapters)){
+          const usedIds = new Set();
+          const tree = renderAdminChapterTree(template.chapters, subj, {value:0}, usedIds);
+          const extra = chapters.filter(([cid])=>!usedIds.has(cid));
+          const extraHtml = extra.map(([,c])=>`
+            <div class="admin-chapter ${c.done?'done':''}">
+              <span class="admin-chapter-dot">${c.done ? '✅' : '⬜'}</span>
+              <span>${escapeHtml(c.name)}</span>
+            </div>`).join('');
+          chapterHtml = tree.html + extraHtml;
+        } else {
+          chapterHtml = chapters.map(([,c])=>`
+            <div class="admin-chapter ${c.done?'done':''}">
+              <span class="admin-chapter-dot">${c.done ? '✅' : '⬜'}</span>
+              <span>${escapeHtml(c.name)}</span>
+            </div>
+          `).join('');
+        }
         return `
           <div class="admin-subject" style="border-left:3px solid ${subj.color}">
             <div class="admin-subject-head">
@@ -1310,7 +1375,7 @@ function renderAdminList(rows){
               <span class="admin-subject-name">${subj.name}</span>
               <span class="admin-subject-count">${doneCount}/${chapters.length}</span>
             </div>
-            <div class="admin-chapter-list">${chapterRows}</div>
+            <div class="admin-chapter-list">${chapterHtml}</div>
           </div>`;
       }).join('');
       row.appendChild(detail);
