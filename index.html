@@ -588,6 +588,24 @@ function defaultSubjectsState(){
   }));
 }
 
+// সিলেবাস আপডেট হওয়ার পর, আগে থেকে সাইনড-আপ থাকা কারো Firebase-এ সেভ করা subjects
+// এখনো পুরনো গঠনে থাকতে পারে (যেমন id:'bangla' বা 'english' বা 'bio1'/'bio2',
+// যেগুলো এখন DEFAULT_SUBJECTS-এ নেই)। এই ফাংশন প্রতিবার লোডে চেক করে —
+// যেসব subject id এখনো টেমপ্লেটে আছে তার প্রোগ্রেস অক্ষত রাখে, নতুন id
+// (bangla1/bangla2/english1/english2/botany/zoology) ফাঁকা অবস্থায় যোগ করে,
+// আর বাদ পড়া পুরনো id বাদ দিয়ে দেয়।
+function migrateSubjects(existing){
+  const byId = {};
+  (existing||[]).forEach(s=>{ if(s && s.id) byId[s.id] = s; });
+  return DEFAULT_SUBJECTS.map(t=>{
+    if(byId[t.id]) return byId[t.id];
+    return {
+      id:t.id, name:t.name, symbol:t.symbol, color:t.color,
+      chapters: Object.fromEntries(flattenChapterTree(t.chapters).map((c,i)=>[t.id+'-'+i, {name:c, done:false}]))
+    };
+  });
+}
+
 let myId = null; // set to Firebase auth UID after sign-in
 let myName = localStorage.getItem('hsc-group-student-name') || '';
 let state = { examDate: '2027-07-01', streak: {count:0, lastDate:null}, studyHistory: {}, subjects: defaultSubjectsState() };
@@ -864,7 +882,8 @@ function startSync(){
   myRef.on('value', snap=>{
     const val = snap.val();
     if(val && val.subjects){
-      state.subjects = val.subjects;
+      const migrated = migrateSubjects(val.subjects);
+      state.subjects = migrated;
       state.examDate = val.examDate || '2027-07-01';
       state.streak = val.streak || {count:0, lastDate:null};
       state.studyHistory = val.studyHistory || {};
@@ -873,6 +892,11 @@ function startSync(){
       updateCountdown();
       renderStreak();
       syncLeaderboardEntry();
+      const oldIds = val.subjects.map(s=>s.id).sort().join(',');
+      const newIds = migrated.map(s=>s.id).sort().join(',');
+      if(oldIds !== newIds){
+        myRef.update({ subjects: migrated, lastUpdated: Date.now() });
+      }
     }
   }, err=>{
     setSyncPill('err','সংযোগ সমস্যা');
