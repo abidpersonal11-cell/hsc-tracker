@@ -398,7 +398,7 @@
         <button class="btn warn" id="timerResetBtn">↺ রিসেট</button>
         <button class="btn" id="floatTimerBtn">🖼️ ভাসমান</button>
       </div>
-      <canvas id="pipCanvas" width="67" height="37" style="display:none;"></canvas>
+      <canvas id="pipCanvas" width="200" height="110" style="display:none;"></canvas>
       <video id="pipVideo" muted playsinline style="display:none; width:1px; height:1px;"></video>
 
       <div class="study-history">
@@ -1430,15 +1430,13 @@ document.addEventListener('visibilitychange', ()=>{
 // "video", then uses the browser's native video Picture-in-Picture feature to
 // keep it floating on top of other apps. This works because Android Chrome
 // supports PiP for actual <video> elements (just not arbitrary floating HTML).
-let pipCanvas, pipCtx, pipVideoEl, pipDrawInterval;
+let pipCanvas, pipCtx, pipVideoEl, pipDrawInterval, pipStream;
 
 function setupPipElements(){
   pipCanvas = document.getElementById('pipCanvas');
   pipCtx = pipCanvas.getContext('2d');
   pipVideoEl = document.getElementById('pipVideo');
-  pipVideoEl.addEventListener('leavepictureinpicture', ()=>{
-    clearInterval(pipDrawInterval);
-  });
+  pipVideoEl.addEventListener('leavepictureinpicture', stopPipStream);
   // Let the floating window's own play/pause controls drive the real timer,
   // so you can start/pause without switching back to this tab.
   pipVideoEl.addEventListener('play', ()=>{
@@ -1453,19 +1451,31 @@ function setupPipElements(){
   }
 }
 
+// Only the time itself — no gradient/background art — kept simple on purpose.
 function drawPipFrame(){
   const w = pipCanvas.width, h = pipCanvas.height;
   const ctx = pipCtx;
-  const grad = ctx.createLinearGradient(0,0,w,h);
-  grad.addColorStop(0, '#4f46e5');
-  grad.addColorStop(1, '#7c6bf0');
-  ctx.fillStyle = grad;
+  ctx.fillStyle = '#161a2e';
   ctx.fillRect(0,0,w,h);
   ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = 'bold 15px monospace';
+  ctx.font = 'bold 46px monospace';
   ctx.fillText(formatTime(currentRemaining()), w/2, h/2);
+}
+
+// Stops the previous capture-stream's tracks. Without this, every time the
+// floating timer is opened it leaves the old track running in the background
+// — repeated open/close over a study session slowly piles these up and is
+// what was making the phone hang after a while.
+function stopPipStream(){
+  clearInterval(pipDrawInterval);
+  pipDrawInterval = null;
+  if(pipStream){
+    pipStream.getTracks().forEach(t=>t.stop());
+    pipStream = null;
+  }
+  if(pipVideoEl) pipVideoEl.srcObject = null;
 }
 
 async function enterFloatingTimer(){
@@ -1474,16 +1484,17 @@ async function enterFloatingTimer(){
     return;
   }
   if(!pipCanvas) setupPipElements();
+  stopPipStream(); // clean up any leftover stream from a previous run first
   drawPipFrame();
   try{
-    const stream = pipCanvas.captureStream();
-    pipVideoEl.srcObject = stream;
+    pipStream = pipCanvas.captureStream();
+    pipVideoEl.srcObject = pipStream;
     await pipVideoEl.play();
     await pipVideoEl.requestPictureInPicture();
-    clearInterval(pipDrawInterval);
     pipDrawInterval = setInterval(drawPipFrame, 1000);
   }catch(e){
     console.error('PiP failed:', e);
+    stopPipStream();
     alert('ভাসমান টাইমার চালু করা গেল না। ব্রাউজার/ডিভাইস সাপোর্ট নাও করতে পারে।');
   }
 }
