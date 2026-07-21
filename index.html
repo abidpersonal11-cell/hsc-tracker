@@ -245,6 +245,16 @@
   .add-row{display:flex; gap:8px; margin-top:10px;}
   .add-row input{flex:1; background:var(--panel2); border:1px solid var(--border); color:var(--ink); padding:9px 12px; border-radius:999px; font-size:14.5px;}
   .add-row button{background:var(--sub-color); color:#fff; border:none; border-radius:999px; padding:8px 16px; font-weight:600; font-size:13px; cursor:pointer; flex-shrink:0;}
+  .chapter-group{border-bottom:1px dashed var(--border); margin-bottom:2px;}
+  .chapter-group:last-of-type{border-bottom:none;}
+  .chapter-group .group-head{display:flex; align-items:center; gap:8px; padding:9px 4px; cursor:pointer;}
+  .chapter-group .gname{flex:1; font-weight:600; font-size:14.5px;}
+  .chapter-group .gcount{color:var(--muted); font-size:12px;}
+  .chapter-group .gchev{color:var(--muted); font-size:12px; transition:transform 0.2s ease;}
+  .chapter-group.open > .group-head .gchev{transform:rotate(180deg);}
+  .chapter-group .group-body{display:none; padding-left:10px; border-left:2px solid var(--border);}
+  .chapter-group.open > .group-body{display:block;}
+  .chapter-group .group-body .chapter-group{border-bottom:none;}
 
   footer{max-width:960px; margin:30px auto 0; padding:20px 16px 0; border-top:1px solid var(--border);
     display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px;}
@@ -451,51 +461,112 @@ const ADMIN_PASSCODE = "abid2027"; // <-- চাইলে বদলে নিজ
 firebase.initializeApp(FIREBASE_CONFIG);
 const db = firebase.database();
 
+// প্রতিটি সাবজেক্টের chapters হয় একটা ফ্ল্যাট স্ট্রিং-অ্যারে (সরাসরি চেকলিস্ট),
+// অথবা {group, items} নোডের অ্যারে (ক্লিক করলে সেকশন খুলবে)। group এর ভেতরে
+// আবার group থাকতে পারে (যেমন English 1st: ইউনিট -> Unit 1..12 -> Lesson)।
 const DEFAULT_SUBJECTS = [
   {id:'physics1', name:'পদার্থবিজ্ঞান ১ম পত্র', symbol:'Ph₁', color:'var(--physics)', chapters:[
-    'ভৌতজগৎ ও পরিমাপ','ভেক্টর','গতিবিদ্যা','নিউটনিয়ান বলবিদ্যা','কাজ, ক্ষমতা ও শক্তি',
-    'মহাকর্ষ ও অভিকর্ষ','পদার্থের গাঠনিক ধর্ম','পর্যায়বৃত্ত গতি','তরঙ্গ'
+    'ভৌতজগত ও পরিমাপ','ভেক্টর','গতিবিদ্যা','নিউটনীয় বলবিদ্যা','কাজ ক্ষমতা ও শক্তি',
+    'মহাকর্ষ ও অভিকর্ষ','পদার্থের গাঠনিক ধর্ম','পর্যাবৃত্তিক গতি','তরঙ্গ','আদর্শ গ্যাস ও গ্যাসের গতিতত্ত্ব'
   ]},
   {id:'physics2', name:'পদার্থবিজ্ঞান ২য় পত্র', symbol:'Ph₂', color:'var(--physics)', chapters:[
-    'তাপগতিবিদ্যা','স্থির তড়িৎ','চল তড়িৎ','তড়িৎ প্রবাহের চৌম্বক ক্রিয়া','তড়িৎচুম্বকীয় আবেশ',
-    'জ্যামিতিক আলোকবিজ্ঞান','ভৌত আলোকবিজ্ঞান','আধুনিক পদার্থবিজ্ঞান','সেমিকন্ডাক্টর ও ইলেকট্রনিক্স'
+    'তাপ গতিবিদ্যা','স্থির তড়িৎ','চল তড়িৎ','তড়িৎচুম্বকীয় আবেশ ও প্রতিবর্তী প্রবাহ','জ্যামিতিক আলোকবিজ্ঞান',
+    'ভৌত আলোকবিজ্ঞান','আধুনিক পদার্থবিজ্ঞানের সূচনা','পরমাণু মডেল ও নিউক্লিয়ার পদার্থবিজ্ঞান',
+    'সেমিকন্ডাক্টর ইলেক্ট্রনিক্স','জ্যোতির্বিজ্ঞান'
   ]},
   {id:'chem1', name:'রসায়ন ১ম পত্র', symbol:'Ch₁', color:'var(--chemistry)', chapters:[
-    'ল্যাবরেটরির নিরাপদ ব্যবহার','গুণগত রসায়ন','মৌলের পর্যায়বৃত্ত ধর্ম ও রাসায়নিক বন্ধন',
+    'ল্যাবরেটরির নিরাপদ ব্যবহার','গুণগত রসায়ন','মৌলের পর্যাবৃত্ত ধর্ম ও রাসায়নিক বন্ধন',
     'রাসায়নিক পরিবর্তন','কর্মমুখী রসায়ন'
   ]},
   {id:'chem2', name:'রসায়ন ২য় পত্র', symbol:'Ch₂', color:'var(--chemistry)', chapters:[
     'পরিবেশ রসায়ন','জৈব রসায়ন','পরিমাণগত রসায়ন','তড়িৎ রসায়ন','অর্থনৈতিক রসায়ন'
   ]},
-  {id:'bio1', name:'জীববিজ্ঞান ১ম পত্র', symbol:'Bi₁', color:'var(--biology)', chapters:[
-    'কোষ ও এর গঠন','কোষ বিভাজন','কোষ রসায়ন','ব্যাক্টেরিয়া ও ভাইরাস','শৈবাল ও ছত্রাক',
-    'ব্রায়োফাইটা ও টেরিডোফাইটা','অনাবৃতবীজী ও আবৃতবীজী উদ্ভিদ','টিস্যু ও টিস্যুতন্ত্র',
-    'উদ্ভিদ শারীরতত্ত্ব','জীবপ্রযুক্তি'
+  {id:'botany', name:'জীববিজ্ঞান ১ম পত্র (উদ্ভিদবিজ্ঞান)', symbol:'Bo', color:'var(--biology)', chapters:[
+    'কোষ ও কোষের গঠন','কোষ বিভাজন','কোষ রসায়ন','অনুজীব','শৈবাল ও ছত্রাক','ব্রায়োফাইটা ও টেরিডোফাইটা',
+    'নগ্নবীজী ও আবৃতবীজী উদ্ভিদ','টিস্যু ও টিস্যুতন্ত্র','উদ্ভিদ শারীরতত্ত্ব','উদ্ভিদ প্রজনন',
+    'জীবপ্রযুক্তি','জীবের পরিবেশ বিস্তার ও সংরক্ষণ'
   ]},
-  {id:'bio2', name:'জীববিজ্ঞান ২য় পত্র', symbol:'Bi₂', color:'var(--biology)', chapters:[
-    'প্রাণীর বিভিন্নতা ও শ্রেণীবিন্যাস','প্রাণী সংগঠন: টিস্যু','পরিফেরা থেকে একাইনোডার্মাটা',
-    'হেমিকর্ডাটা ও কর্ডাটা','পরিপাক ও শোষণ','রক্ত ও সঞ্চালন','শ্বসন ও শ্বাসক্রিয়া',
-    'বর্জ্য ও নিষ্কাশন','চলন ও অঙ্গচালনা','সমন্বয়','জিন প্রকৌশল ও জীবপ্রযুক্তি'
+  {id:'zoology', name:'জীববিজ্ঞান ২য় পত্র (প্রাণিবিজ্ঞান)', symbol:'Zo', color:'var(--biology)', chapters:[
+    'প্রাণির বিভিন্নতা ও শ্রেণিবিন্যাস','প্রাণির পরিচিতি ১ম','প্রাণির পরিচিতি ২য়','প্রাণির পরিচিতি ৩য়',
+    'মানব শারীরতত্ত্ব (পরিপাক ও শোষণ)','মানব শারীরতত্ত্ব (রক্ত সংবহন)','মানব শারীরতত্ত্ব (শ্বসন ও শ্বাসক্রিয়া)',
+    'মানব শারীরতত্ত্ব (বর্জ্য ও নিষ্কাশন)','মানব শারীরতত্ত্ব (চলন ও অঙ্গচালনা ১ম)','মানব শারীরতত্ত্ব (চলন ও অঙ্গচালনা ২য়)',
+    'মানব শারীরতত্ত্ব (সমন্বয় ও নিয়ন্ত্রণ)','মানব জীবনের ধারাবাহিকতা','মানবদেহের প্রতিরক্ষা',
+    'জিনতত্ত্ব ও বিবর্তন','প্রাণির আচরণ'
   ]},
   {id:'math1', name:'উচ্চতর গণিত ১ম পত্র', symbol:'HM₁', color:'var(--math)', chapters:[
-    'ম্যাট্রিক্স ও নির্ণায়ক','ভেক্টর','সরলরেখা','বৃত্ত','অন্তরীকরণ','যোগজীকরণ',
-    'ত্রিকোণমিতিক অনুপাত','সংযোগ ও বিন্যাস'
+    'ম্যাট্রিক্স ও নির্ণায়ক','ভেক্টর','সরলরেখা','বৃত্ত','বিন্যাস ও সমাবেশ','ত্রিকোণমিতিক অনুপাত',
+    'সংযুক্ত কোণের ত্রিকোণমিতিক অনুপাত','ফাংশন ও ফাংশনের লেখচিত্র','অন্তরীকরণ','যোগজীকরণ'
   ]},
   {id:'math2', name:'উচ্চতর গণিত ২য় পত্র', symbol:'HM₂', color:'var(--math)', chapters:[
-    'বাস্তব সংখ্যা ও অসমতা','যোগাশ্রয়ী রাশি','ঘাত ও লগারিদম ফাংশন','বিন্যাস ও সমাবেশ',
-    'ত্রিকোণমিতিক ফাংশন','স্থিতিবিদ্যা','সমতলে বস্তুকণার গতি','সংখ্যায়ন পদ্ধতি'
+    'বাস্তব সংখ্যা ও অসমতা','যোগাশ্রয়ী প্রোগ্রাম','জটিল সংখ্যা','বহুপদী ও বহুপদী সমীকরণ','দ্বিপদী বিস্তৃতি',
+    'কণিক','বিপরীত ত্রিকোণমিতিক ফাংশন ও ত্রিকোণমিতিক সমীকরণ','স্থিতিবিদ্যা','সমতলে বস্তুকণার গতি',
+    'বিস্তার পরিমাপ ও সম্ভাবনা'
   ]},
-  {id:'bangla', name:'বাংলা', symbol:'Bn', color:'var(--bangla)', chapters:[
-    'গদ্য','পদ্য','উপন্যাস','নাটক','ব্যাকরণ','নির্মিতি (ভাব-সম্প্রসারণ, রচনা, প্রতিবেদন)'
+  {id:'bangla1', name:'বাংলা ১ম পত্র', symbol:'Bn₁', color:'var(--bangla)', chapters:[
+    {group:'গদ্য', items:[
+      'বাঙ্গালার নব্য লেখকদিগের প্রতি নিবেদন','অপরিচিতা','বায়ান্নার দিনগুলো','আহবান','নেকলেস',
+      'সাহিত্যে খেলা','যৌবনের গান','জীবণ ও বৃক্ষ','গৃহ','আমার পথ','মাসি-পিসি','মানবকল্যাণ','বিলাসী',
+      'রেইনকোর্ট','মহাজাগতিক কিউরেটর','গন্তব্য কাবুল','কপিলদাশ মুর্মুর শেষ কাজ'
+    ]},
+    {group:'পদ্য', items:[
+      'বিভীষণের প্রতি মেঘনাদ','সোনার তরী','বিদ্রোহী','নুরুলদীনের কথা মনে পড়ে যায়','পদ্মা','ফেব্রুয়ারী ১৯৬৯',
+      'প্রতিদান','সুচেতনা','ছবি','তাহারেই পড়ে মনে','আমি কিংবদন্তির কথা বলছি','আঠারো বছর বয়স',
+      'প্রত্যবর্তনের লজ্জা','ঋতু বর্ণন'
+    ]},
+    {group:'উপন্যাস', items:['লালসালু']},
+    {group:'নাটক', items:['সিরাজউদ্দৌলা']}
   ]},
-  {id:'english', name:'English', symbol:'En', color:'var(--english)', chapters:[
-    'Seen Comprehension','Unseen Comprehension','Grammar Items','Vocabulary','Writing (Paragraph/Essay)','Writing (CV, Letter, Report)'
+  {id:'bangla2', name:'বাংলা ২য় পত্র', symbol:'Bn₂', color:'var(--bangla)', chapters:[
+    {group:'ব্যাকরণ', items:[
+      'উপসর্গ','প্রকৃতি ও প্রত্যয়','ব্যাকরণিক শব্দশ্রেণি','উচ্চারণ','বানান','সমাস','বাক্য','বাক্য শুদ্ধি'
+    ]},
+    {group:'নির্মিতি', items:[
+      'পারিভাষিক শব্দ / অনুবাদ','দিনলিপি ও অভিজ্ঞতা / ভাষণ রচনা ও প্রতিবেদন',
+      'বৈদ্যুতিক চিঠি বা খুদেবার্তা / পত্র লিখন বা আবেদন পত্র','সারাংশ বা সারসংক্ষেপ বা সারমর্ম / ভাবসম্প্রসারণ',
+      'সংলাপ রচনা / খুদে গল্প','প্রবন্ধ রচনা'
+    ]}
+  ]},
+  {id:'english1', name:'English 1st Paper', symbol:'En₁', color:'var(--english)', chapters:[
+    {group:'ইউনিট', items:[
+      {group:'Unit 1', items:['Lesson 1','Lesson 2','Lesson 3','Lesson 4']},
+      {group:'Unit 2', items:['Lesson 1','Lesson 2','Lesson 3','Lesson 4']},
+      {group:'Unit 3', items:['Lesson 1','Lesson 2','Lesson 3','Lesson 4']},
+      {group:'Unit 4', items:['Lesson 1','Lesson 2','Lesson 3']},
+      {group:'Unit 5', items:['Lesson 1','Lesson 2','Lesson 3','Lesson 4','Lesson 5']},
+      {group:'Unit 6', items:['Lesson 1','Lesson 2']},
+      {group:'Unit 7', items:['Lesson 1','Lesson 2','Lesson 3']},
+      {group:'Unit 8', items:['Lesson 1','Lesson 2','Lesson 3','Lesson 4']},
+      {group:'Unit 9', items:['Lesson 1','Lesson 2','Lesson 3','Lesson 4']},
+      {group:'Unit 10', items:['Lesson 1','Lesson 2','Lesson 3','Lesson 4','Lesson 5']},
+      {group:'Unit 11', items:['Lesson 1','Lesson 2','Lesson 3','Lesson 4','Lesson 5']},
+      {group:'Unit 12', items:['Lesson 1','Lesson 2','Lesson 3','Lesson 4','Lesson 5']}
+    ]},
+    {group:'Writing Part', items:['Paragraph','Story','Informal Letter/Email','Graph/Chart','Theme']}
+  ]},
+  {id:'english2', name:'English 2nd Paper', symbol:'En₂', color:'var(--english)', chapters:[
+    'Article','Phrases','Right form of verb','Preposition','Transformation','Speech change',
+    'Pronoun reference','Modifier','Connectors','Punctuation mark','Completing sentence','Syn/Ant',
+    'Formal Letter/Email','Paragraph','Report','Composition'
   ]},
   {id:'ict', name:'তথ্য ও যোগাযোগ প্রযুক্তি', symbol:'ICT', color:'var(--ict)', chapters:[
     'তথ্য ও যোগাযোগ প্রযুক্তি বিশ্ব','কমিউনিকেশন সিস্টেম ও নেটওয়ার্কিং','সংখ্যা পদ্ধতি ও ডিজিটাল ডিভাইস',
     'ওয়েব ডিজাইন পরিচিতি ও HTML','প্রোগ্রামিং ভাষা','ডেটাবেজ ম্যানেজমেন্ট সিস্টেম'
   ]}
 ];
+
+// chapters ট্রি (গ্রুপ থাকতে পারে এমন) থেকে সবগুলো লিফ চ্যাপ্টারের নাম, ক্রম বজায় রেখে বের করে।
+function flattenChapterTree(nodes){
+  let out = [];
+  nodes.forEach(node=>{
+    if(typeof node === 'string') out.push(node);
+    else if(node && node.group) out = out.concat(flattenChapterTree(node.items));
+  });
+  return out;
+}
+
+function isGroupedTree(nodes){
+  return nodes.some(n => n && typeof n === 'object' && n.group);
+}
 
 function slugify(name){
   return name.trim().toLowerCase().replace(/[.#$\[\]\/\s]+/g,'-').replace(/[^a-z0-9\u0980-\u09FF-]/g,'') + '-' + Math.random().toString(36).slice(2,6);
@@ -513,7 +584,7 @@ function escapeHtml(str){
 function defaultSubjectsState(){
   return DEFAULT_SUBJECTS.map(s => ({
     id:s.id, name:s.name, symbol:s.symbol, color:s.color,
-    chapters: Object.fromEntries(s.chapters.map((c,i)=>[s.id+'-'+i, {name:c, done:false}]))
+    chapters: Object.fromEntries(flattenChapterTree(s.chapters).map((c,i)=>[s.id+'-'+i, {name:c, done:false}]))
   }));
 }
 
@@ -953,21 +1024,81 @@ function render(){
       </div>
     `;
     const list = card.querySelector('.chapter-list');
-    chapters.forEach(([cid, ch])=>{
-      const row = document.createElement('div');
-      row.className = 'chapter' + (ch.done?' done':'');
-      row.innerHTML = `
-        <input type="checkbox" ${ch.done?'checked':''} data-toggle="${subj.id}|${cid}">
-        <div class="cname">${escapeHtml(ch.name)}</div>
-        <button class="del" data-del="${subj.id}|${cid}">✕</button>
-      `;
-      list.appendChild(row);
-    });
+    const template = DEFAULT_SUBJECTS.find(t=>t.id===subj.id);
+    if(template && isGroupedTree(template.chapters)){
+      const idxRef = {value:0};
+      const usedIds = new Set();
+      renderChapterNodes(template.chapters, subj, subj.id, list, idxRef, usedIds);
+      const extra = chapters.filter(([cid])=>!usedIds.has(cid));
+      if(extra.length){
+        const extraWrap = document.createElement('div');
+        extraWrap.className = 'chapter-group open';
+        extraWrap.innerHTML = `<div class="group-head"><span class="gname">অতিরিক্ত টপিক</span></div><div class="group-body"></div>`;
+        const body = extraWrap.querySelector('.group-body');
+        extra.forEach(([cid, ch])=> body.appendChild(makeChapterRow(subj.id, cid, ch)));
+        list.appendChild(extraWrap);
+      }
+    } else {
+      chapters.forEach(([cid, ch])=> list.appendChild(makeChapterRow(subj.id, cid, ch)));
+    }
     grid.appendChild(card);
   });
 }
 
+function makeChapterRow(subjId, cid, ch){
+  const row = document.createElement('div');
+  row.className = 'chapter' + (ch.done?' done':'');
+  row.innerHTML = `
+    <input type="checkbox" ${ch.done?'checked':''} data-toggle="${subjId}|${cid}">
+    <div class="cname">${escapeHtml(ch.name)}</div>
+    <button class="del" data-del="${subjId}|${cid}">✕</button>
+  `;
+  return row;
+}
+
+// subj.chapters (state) স্ট্রিং সব সময় ফ্ল্যাট ({id: {name,done}}); DEFAULT_SUBJECTS-এর
+// টেমপ্লেট ট্রি একই ক্রমে হাঁটলে (defaultSubjectsState-এর মতো) প্রতিটা লিফের জন্য একই cid পাওয়া যায়,
+// তাই এখানে আলাদা কোনো id সংরক্ষণ ছাড়াই গ্রুপ অনুযায়ী দেখানো যায়।
+let openGroups = {}; // UI-only, Firebase-এ সিঙ্ক হয় না
+function renderChapterNodes(nodes, subj, pathPrefix, containerEl, idxRef, usedIds){
+  let done=0, total=0;
+  nodes.forEach(node=>{
+    if(typeof node === 'string'){
+      const cid = subj.id+'-'+idxRef.value;
+      idxRef.value++;
+      const ch = subj.chapters[cid];
+      if(!ch) return;
+      usedIds.add(cid);
+      total++; if(ch.done) done++;
+      containerEl.appendChild(makeChapterRow(subj.id, cid, ch));
+    } else if(node && node.group){
+      const groupPath = pathPrefix+'>'+node.group;
+      const isOpen = !!openGroups[groupPath];
+      const groupWrap = document.createElement('div');
+      groupWrap.className = 'chapter-group' + (isOpen ? ' open':'');
+      const bodyDiv = document.createElement('div');
+      bodyDiv.className = 'group-body';
+      const sub = renderChapterNodes(node.items, subj, groupPath, bodyDiv, idxRef, usedIds);
+      done += sub.done; total += sub.total;
+      const headDiv = document.createElement('div');
+      headDiv.className = 'group-head';
+      headDiv.dataset.group = groupPath;
+      headDiv.innerHTML = `<span class="gname">${escapeHtml(node.group)}</span><span class="gcount mono">${sub.done}/${sub.total}</span><span class="gchev">▾</span>`;
+      groupWrap.appendChild(headDiv);
+      groupWrap.appendChild(bodyDiv);
+      containerEl.appendChild(groupWrap);
+    }
+  });
+  return {done, total};
+}
+
 document.addEventListener('click', (e)=>{
+  const groupHead = e.target.closest('.group-head');
+  if(groupHead && groupHead.dataset.group){
+    openGroups[groupHead.dataset.group] = !openGroups[groupHead.dataset.group];
+    render();
+    return;
+  }
   const head = e.target.closest('.head');
   if(head){
     const id = head.dataset.id;
