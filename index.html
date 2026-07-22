@@ -623,6 +623,27 @@ function setSyncPill(mode, text){
   document.getElementById('syncText').textContent = text;
 }
 
+// অফলাইন ব্যাকআপ: প্রতিবার Firebase থেকে ডেটা আসলে (বা লোকাল পরিবর্তন হলে) সেটা
+// ব্রাউজারের localStorage-এও রেখে দেওয়া হয়, যাতে ইন্টারনেট না থাকলেও অ্যাপ খুলে
+// সর্বশেষ সেভ করা প্রগ্রেস সাথে সাথে দেখা যায় (Firebase কানেক্ট হওয়ার অপেক্ষা না করেই)।
+function localCacheKey(){ return 'hsc-tracker-cache-' + myId; }
+function saveLocalCache(){
+  if(!myId) return;
+  try{
+    localStorage.setItem(localCacheKey(), JSON.stringify({
+      subjects: state.subjects, examDate: state.examDate,
+      streak: state.streak, studyHistory: state.studyHistory
+    }));
+  }catch(e){ console.error('local cache save failed', e); }
+}
+function loadLocalCache(){
+  if(!myId) return null;
+  try{
+    const raw = localStorage.getItem(localCacheKey());
+    return raw ? JSON.parse(raw) : null;
+  }catch(e){ return null; }
+}
+
 function usernameToEmail(username){
   const clean = username.trim().toLowerCase().replace(/[^a-z0-9_.-]/g, '');
   return clean + '@hsc2027tracker.app';
@@ -849,8 +870,12 @@ function addStudySeconds(sec){
   const updates = {};
   updates['studyHistory/' + today] = newTodayTotal;
   if(newTodayTotal >= 7200 && state.streak.lastDate !== today){
-    updates.streak = computeNewStreak(state.streak);
+    const newStreak = computeNewStreak(state.streak);
+    updates.streak = newStreak;
+    state.streak = newStreak;
   }
+  renderStreak();
+  saveLocalCache();
   myRef.update(updates);
 }
 
@@ -866,6 +891,21 @@ function syncLeaderboardEntry(){
 function startSync(){
   setSyncPill('busy','সিঙ্ক হচ্ছে...');
   myRef = db.ref('students/' + myId);
+
+  // ইন্টারনেট থাকুক বা না থাকুক, আগের সেভ করা ডেটা সাথে সাথে দেখিয়ে দাও —
+  // Firebase কানেক্ট হলে নিচের .on('value') সেটাকে আপডেট করে দেবে।
+  const cached = loadLocalCache();
+  if(cached){
+    state.subjects = migrateSubjects(cached.subjects || []);
+    state.examDate = cached.examDate || '2027-07-01';
+    state.streak = cached.streak || {count:0, lastDate:null};
+    state.studyHistory = cached.studyHistory || {};
+    document.getElementById('studentNameDisplay').textContent = myName;
+    render();
+    updateCountdown();
+    renderStreak();
+    if(!navigator.onLine) setSyncPill('err','অফলাইন — শেষ সেভ করা অবস্থা দেখানো হচ্ছে');
+  }
 
   myRef.once('value').then(snap=>{
     if(!snap.exists()){
@@ -897,6 +937,7 @@ function startSync(){
       updateCountdown();
       renderStreak();
       syncLeaderboardEntry();
+      saveLocalCache();
       const oldIds = val.subjects.map(s=>s.id).sort().join(',');
       const newIds = migrated.map(s=>s.id).sort().join(',');
       if(oldIds !== newIds){
@@ -904,9 +945,12 @@ function startSync(){
       }
     }
   }, err=>{
-    setSyncPill('err','সংযোগ সমস্যা');
+    setSyncPill('err', navigator.onLine ? 'সংযোগ সমস্যা' : 'অফলাইন — শেষ সেভ করা অবস্থা দেখানো হচ্ছে');
     console.error(err);
   });
+
+  window.addEventListener('online', ()=> setSyncPill('busy','সিঙ্ক হচ্ছে...'));
+  window.addEventListener('offline', ()=> setSyncPill('err','অফলাইন — শেষ সেভ করা অবস্থা দেখানো হচ্ছে'));
 
   startLeaderboard();
 }
@@ -1155,12 +1199,13 @@ document.addEventListener('click', (e)=>{
   const delBtn = e.target.closest('[data-del]');
   if(delBtn){
     const [sid, cid] = delBtn.dataset.del.split('|');
-    myRef.child('subjects').once('value').then(snap=>{
-      const subjects = snap.val();
-      const idx = subjects.findIndex(s=>s.id===sid);
-      delete subjects[idx].chapters[cid];
-      myRef.update({ subjects, lastUpdated: Date.now() });
-    });
+    const subj = state.subjects.find(s=>s.id===sid);
+    if(subj){
+      delete subj.chapters[cid];
+      render();
+      saveLocalCache();
+      myRef.update({ subjects: state.subjects, lastUpdated: Date.now() });
+    }
     return;
   }
   const addBtn = e.target.closest('[data-addbtn]');
@@ -1169,13 +1214,14 @@ document.addEventListener('click', (e)=>{
     const input = document.querySelector(`[data-add="${sid}"]`);
     const val = input.value.trim();
     if(val){
-      myRef.child('subjects').once('value').then(snap=>{
-        const subjects = snap.val();
-        const idx = subjects.findIndex(s=>s.id===sid);
+      const subj = state.subjects.find(s=>s.id===sid);
+      if(subj){
         const newId = sid+'-'+Date.now();
-        subjects[idx].chapters[newId] = { name: val, done:false };
-        myRef.update({ subjects, lastUpdated: Date.now() });
-      });
+        subj.chapters[newId] = { name: val, done:false };
+        render();
+        saveLocalCache();
+        myRef.update({ subjects: state.subjects, lastUpdated: Date.now() });
+      }
     }
     return;
   }
@@ -1185,12 +1231,13 @@ document.addEventListener('change', (e)=>{
   const toggle = e.target.closest('[data-toggle]');
   if(toggle){
     const [sid, cid] = toggle.dataset.toggle.split('|');
-    myRef.child(`subjects`).once('value').then(snap=>{
-      const subjects = snap.val();
-      const idx = subjects.findIndex(s=>s.id===sid);
-      subjects[idx].chapters[cid].done = toggle.checked;
-      myRef.update({ subjects, lastUpdated: Date.now() });
-    });
+    const subj = state.subjects.find(s=>s.id===sid);
+    if(subj && subj.chapters[cid]){
+      subj.chapters[cid].done = toggle.checked;
+      render();
+      saveLocalCache();
+      myRef.update({ subjects: state.subjects, lastUpdated: Date.now() });
+    }
   }
 });
 
