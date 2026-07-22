@@ -35,6 +35,18 @@
            "$uid": {
              ".write": "auth != null && $uid === auth.uid"
            }
+         },
+         "blockedUsers": {
+           ".read": "auth != null",
+           "$uid": {
+             ".write": "auth != null && auth.uid === 'YOUR_UID_HERE'"
+           }
+         },
+         "forceLogout": {
+           ".read": "auth != null",
+           "$uid": {
+             ".write": "auth != null && auth.uid === 'YOUR_UID_HERE'"
+           }
          }
        }
      }
@@ -288,6 +300,13 @@
   .admin-bar-wrap{background:var(--panel2); border-radius:4px; height:8px; overflow:hidden; border:1px solid var(--border);}
   .admin-bar-fill{height:100%; background:linear-gradient(90deg,var(--accent),var(--accent2));}
   .admin-pct{font-family:'JetBrains Mono',monospace; font-weight:700; text-align:right;}
+  .admin-actions{ display:flex; align-items:center; gap:8px; }
+  .admin-block-btn{
+    background:var(--warn); color:#fff; border:none; border-radius:999px;
+    padding:6px 12px; font-size:11.5px; font-weight:600; cursor:pointer; flex-shrink:0;
+  }
+  .admin-block-btn.is-blocked{ background:var(--muted); }
+  .admin-logout-btn{ background:var(--accent); }
 
   .admin-detail{ padding:6px 14px 16px; background:var(--panel2); }
 
@@ -333,7 +352,7 @@
     </div>
 
     <div id="nameFieldWrap">
-      <input type="text" id="displayNameInput" placeholder="প্রদর্শনের নাম (যেমন: Abid Hakim)">
+      <input type="text" id="displayNameInput" placeholder="Your Name">
     </div>
     <input type="text" id="usernameInput" placeholder="ইউজারনেম (ইংরেজিতে, ইউনিক, যেমন: abid101)" autocapitalize="off">
     <input type="password" id="pinInput" placeholder="৬ ডিজিটের পিন" inputmode="numeric" maxlength="6">
@@ -599,6 +618,18 @@ function defaultSubjectsState(){
 // যেসব subject id এখনো টেমপ্লেটে আছে তার প্রোগ্রেস অক্ষত রাখে, নতুন id
 // (bangla1/bangla2/english1/english2/botany/zoology) ফাঁকা অবস্থায় যোগ করে,
 // আর বাদ পড়া পুরনো id বাদ দিয়ে দেয়।
+// subj._open (কোন কার্ড খোলা আছে) শুধু এই ডিভাইসের UI-এর জন্য — এটা Firebase-এ
+// সেভ হওয়ার কথা না। কিন্তু myRef.update({subjects: state.subjects, ...}) সরাসরি
+// পুরো অবজেক্ট পাঠালে _open ও চলে যায় এবং পরে reload করলেও সেই সাবজেক্ট খোলা
+// অবস্থায় আটকে থাকে। তাই Firebase-এ লেখার আগে সবসময় এটা বাদ দিয়ে দাও।
+function stripUiFlags(subjects){
+  return subjects.map(s=>{
+    const clean = Object.assign({}, s);
+    delete clean._open;
+    return clean;
+  });
+}
+
 function migrateSubjects(existing){
   const byId = {};
   (existing||[]).forEach(s=>{ if(s && s.id) byId[s.id] = s; });
@@ -687,8 +718,11 @@ function initStudent(){
     if(user){
       myId = user.uid;
       console.log('My Firebase UID:', user.uid); // <-- এডমিন সেটআপের জন্য এইটা কপি করুন
+      localStorage.setItem(DEVICE_ACCOUNT_FLAG, '1');
       document.getElementById('nameModal').style.display = 'none';
       startSync();
+      watchBlockedStatus();
+      watchForceLogout();
     } else {
       document.getElementById('nameModal').style.display = 'flex';
       setSyncPill('busy','লগইন দরকার');
@@ -696,11 +730,66 @@ function initStudent(){
   });
 }
 
+// লগইন করা অবস্থাতেও অ্যাডমিন ব্লক করলে সাথে সাথেই লগ-আউট হয়ে যাবে —
+// নিজে থেকে লগআউট করার জন্য অপেক্ষা করতে হবে না।
+let blockedRef = null;
+function watchBlockedStatus(){
+  if(blockedRef) blockedRef.off();
+  blockedRef = db.ref('blockedUsers/' + myId);
+  blockedRef.on('value', snap=>{
+    if(snap.val() === true){
+      blockedRef.off();
+      alert('তোমার অ্যাকাউন্ট এই ট্র্যাকার থেকে ব্লক করা হয়েছে।');
+      localStorage.removeItem('hsc-group-student-name');
+      firebase.auth().signOut().then(()=> location.reload());
+    }
+  });
+}
+
+// ব্লকের চেয়ে হালকা — শুধু বর্তমান সেশনটা লগ-আউট করিয়ে দেয়, স্থায়ীভাবে আটকায় না;
+// চাইলে আবার লগইন করা যাবে। forceLogout/$uid-এ প্রথমবার সাবস্ক্রাইব করার সময় যা
+// পাওয়া যায় (আগের কোনো পুরনো ট্রিগার) সেটা উপেক্ষা করা হয় — এরপর নতুন কিছু সেট
+// হলেই (অ্যাডমিন আবার ক্লিক করলে) তবেই লগ-আউট হবে।
+let forceLogoutRef = null;
+let forceLogoutFirstSnapshot = true;
+function watchForceLogout(){
+  if(forceLogoutRef) forceLogoutRef.off();
+  forceLogoutFirstSnapshot = true;
+  forceLogoutRef = db.ref('forceLogout/' + myId);
+  forceLogoutRef.on('value', snap=>{
+    if(forceLogoutFirstSnapshot){ forceLogoutFirstSnapshot = false; return; }
+    if(snap.val()){
+      forceLogoutRef.off();
+      alert('এডমিন তোমাকে লগ-আউট করে দিয়েছে। চাইলে আবার লগইন করতে পারো।');
+      localStorage.removeItem('hsc-group-student-name');
+      firebase.auth().signOut().then(()=> location.reload());
+    }
+  });
+}
+
+// এই নামে (ছোট/বড় হাতের অক্ষর, বাড়তি স্পেস আলাদা করে গোনা হয় না) নতুন করে
+// কেউ অ্যাকাউন্ট বানাতে পারবে না — শুধু আমার আগে থেকে থাকা অ্যাকাউন্টেই এই নাম থাকবে।
+const RESERVED_NAMES = ['muhammad abid hakim', 'abid hakim'];
+function normalizeName(name){
+  return name.trim().toLowerCase().replace(/\s+/g,' ');
+}
+
+// এই ডিভাইস থেকে আগে একবার অ্যাকাউন্ট তৈরি হয়ে থাকলে (লগআউট করলেও) এই ফ্ল্যাগ
+// থেকে যায়, যাতে একই ডিভাইস থেকে বারবার নতুন/ফেক অ্যাকাউন্ট খোলা না যায়।
+const DEVICE_ACCOUNT_FLAG = 'hsc-device-has-account';
+
+// শুধু .trim() সাধারণ স্পেস বাদ দেয়, কিন্তু zero-width/non-breaking স্পেসের মতো
+// অদৃশ্য ক্যারেক্টার বাদ দেয় না — সেগুলো দিয়ে টাইপ করলে ফাঁকা নামও "নন-এম্পটি" মনে হতে
+// পারত আর চেক পাস করে যেত। তাই এগুলোও বাদ দিয়ে তারপর যাচাই করা হচ্ছে।
+function cleanDisplayName(name){
+  return (name || '').replace(/[\u200B-\u200D\uFEFF\u00A0\s]+/g, ' ').trim();
+}
+
 document.getElementById('authSubmit').addEventListener('click', ()=>{
   clearAuthError();
   const username = document.getElementById('usernameInput').value.trim();
   const pin = document.getElementById('pinInput').value.trim();
-  const displayName = document.getElementById('displayNameInput').value.trim();
+  const displayName = cleanDisplayName(document.getElementById('displayNameInput').value);
 
   if(!username || username.length < 3){ showAuthError('ইউজারনেম অন্তত ৩ অক্ষরের দিন।'); return; }
   if(!/^\d{6}$/.test(pin)){ showAuthError('পিন অবশ্যই ৬ ডিজিটের সংখ্যা হতে হবে।'); return; }
@@ -708,7 +797,15 @@ document.getElementById('authSubmit').addEventListener('click', ()=>{
   const email = usernameToEmail(username);
 
   if(authMode === 'new'){
-    if(!displayName){ showAuthError('প্রদর্শনের নাম লিখো।'); return; }
+    if(!displayName || displayName.length < 2){ showAuthError('প্রদর্শনের নাম লিখো (অন্তত ২ অক্ষর)।'); return; }
+    if(RESERVED_NAMES.includes(normalizeName(displayName))){
+      showAuthError('এই নামে নতুন অ্যাকাউন্ট খোলা যাবে না।');
+      return;
+    }
+    if(localStorage.getItem(DEVICE_ACCOUNT_FLAG)){
+      showAuthError('এই ডিভাইস থেকে আগে থেকেই একটা অ্যাকাউন্ট তৈরি করা হয়েছে। নতুন অ্যাকাউন্ট এখান থেকে খোলা যাবে না — আগের অ্যাকাউন্ট দিয়ে লগইন করো।');
+      return;
+    }
     // createUser-এর পরপরই (এমনকি .then() চলার আগেই) auth-state বদলে গিয়ে
     // startSync() চালু হয়ে যেতে পারে — তাই myName এখানেই, কল করার আগেই, সেট
     // করে রাখছি, নইলে রেসকন্ডিশনে অ্যাকাউন্ট ফাঁকা নাম নিয়ে তৈরি হতে পারত।
@@ -716,6 +813,9 @@ document.getElementById('authSubmit').addEventListener('click', ()=>{
     myName = displayName;
     localStorage.setItem('hsc-group-student-name', myName);
     firebase.auth().createUserWithEmailAndPassword(email, pin)
+      .then(()=>{
+        localStorage.setItem(DEVICE_ACCOUNT_FLAG, '1');
+      })
       .catch(err=>{
         myName = previousName;
         if(previousName) localStorage.setItem('hsc-group-student-name', previousName);
@@ -729,6 +829,7 @@ document.getElementById('authSubmit').addEventListener('click', ()=>{
   } else {
     firebase.auth().signInWithEmailAndPassword(email, pin)
       .then(()=>{
+        localStorage.setItem(DEVICE_ACCOUNT_FLAG, '1');
         // name will be loaded from the student's saved data in startSync
       })
       .catch(err=>{
@@ -749,7 +850,13 @@ document.getElementById('switchBtn').addEventListener('click', ()=>{
 });
 
 document.getElementById('showUidBtn').addEventListener('click', ()=>{
-  alert('আমার Firebase UID:\n\n' + myId + '\n\nএটা কপি করে Firebase Rules-এ বসাও।');
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(myId)
+      .then(()=> alert('UID কপি হয়ে গেছে ✓\n\n' + myId))
+      .catch(()=> prompt('কপি করতে ব্যর্থ হয়েছে — নিচে থেকে ম্যানুয়ালি সিলেক্ট করে কপি করো:', myId));
+  } else {
+    prompt('তোমার Firebase UID (সিলেক্ট করে কপি করো):', myId);
+  }
 });
 
 function todayStr(){
@@ -928,6 +1035,8 @@ function startSync(){
     const val = snap.val();
     if(val && val.subjects){
       const migrated = migrateSubjects(val.subjects);
+      const hadStrayOpenFlag = val.subjects.some(s=>s && s._open);
+      migrated.forEach(s=>{ delete s._open; }); // never trust a persisted open-state
       state.subjects = migrated;
       state.examDate = val.examDate || '2027-07-01';
       state.streak = val.streak || {count:0, lastDate:null};
@@ -940,8 +1049,8 @@ function startSync(){
       saveLocalCache();
       const oldIds = val.subjects.map(s=>s.id).sort().join(',');
       const newIds = migrated.map(s=>s.id).sort().join(',');
-      if(oldIds !== newIds){
-        myRef.update({ subjects: migrated, lastUpdated: Date.now() });
+      if(oldIds !== newIds || hadStrayOpenFlag){
+        myRef.update({ subjects: stripUiFlags(migrated), lastUpdated: Date.now() });
       }
     }
   }, err=>{
@@ -1204,7 +1313,7 @@ document.addEventListener('click', (e)=>{
       delete subj.chapters[cid];
       render();
       saveLocalCache();
-      myRef.update({ subjects: state.subjects, lastUpdated: Date.now() });
+      myRef.update({ subjects: stripUiFlags(state.subjects), lastUpdated: Date.now() });
     }
     return;
   }
@@ -1220,7 +1329,7 @@ document.addEventListener('click', (e)=>{
         subj.chapters[newId] = { name: val, done:false };
         render();
         saveLocalCache();
-        myRef.update({ subjects: state.subjects, lastUpdated: Date.now() });
+        myRef.update({ subjects: stripUiFlags(state.subjects), lastUpdated: Date.now() });
       }
     }
     return;
@@ -1236,7 +1345,7 @@ document.addEventListener('change', (e)=>{
       subj.chapters[cid].done = toggle.checked;
       render();
       saveLocalCache();
-      myRef.update({ subjects: state.subjects, lastUpdated: Date.now() });
+      myRef.update({ subjects: stripUiFlags(state.subjects), lastUpdated: Date.now() });
     }
   }
 });
@@ -1263,6 +1372,7 @@ document.getElementById('adminBtn').addEventListener('click', ()=>{
     document.getElementById('adminPanel').classList.add('open');
     document.getElementById('adminBtn').textContent = 'নিজের ভিউ';
     loadAdminData();
+    loadBlockedUsers();
     clearInterval(adminLiveTickInterval);
     adminLiveTickInterval = setInterval(()=>renderAdminLiveList(adminDataCache), 1000);
   } else {
@@ -1276,6 +1386,19 @@ document.getElementById('adminBtn').addEventListener('click', ()=>{
 
 let adminDataCache = {};
 let adminOpenStudentId = null;
+let blockedUsersCache = {};
+let lastAdminRows = [];
+
+// অ্যাডমিন এখান থেকে যেকোনো ছাত্রকে ব্লক/আনব্লক করতে পারবে — সে এই মুহূর্তে
+// লগইন অবস্থায় থাকুক বা না থাকুক। blockedUsers/$uid আলাদা একটা নোড, যেখানে
+// Firebase Rules অনুযায়ী শুধু অ্যাডমিনের UID লিখতে পারে; প্রতিটা ইউজার নিজের
+// এন্ট্রি লাইভ শুনে (নিচে watchBlockedStatus) — ব্লক হলে সাথে সাথেই লগ-আউট হয়ে যাবে।
+function loadBlockedUsers(){
+  db.ref('blockedUsers').on('value', snap=>{
+    blockedUsersCache = snap.val() || {};
+    if(adminOpen) renderAdminList(lastAdminRows);
+  });
+}
 
 function loadAdminData(){
   db.ref('students').on('value', snap=>{
@@ -1293,6 +1416,7 @@ function loadAdminData(){
       return { id, name: s.name || id, pct, updated: s.lastUpdated };
     }).sort((a,b)=>b.pct - a.pct);
 
+    lastAdminRows = rows;
     renderAdminList(rows);
     renderAdminLiveList(all);
   }, err=>{
@@ -1368,6 +1492,7 @@ function renderAdminList(rows){
   }
   rows.forEach(r=>{
     const isOpen = adminOpenStudentId === r.id;
+    const isBlocked = !!blockedUsersCache[r.id];
     const row = document.createElement('div');
     row.className = 'admin-row-wrap';
 
@@ -1376,11 +1501,29 @@ function renderAdminList(rows){
     head.className = 'admin-row';
     head.style.cursor = 'pointer';
     head.innerHTML = `
-      <div class="admin-name">${escapeHtml(r.name)}<div class="admin-updated">সর্বশেষ: ${updatedStr}</div></div>
+      <div class="admin-name">${escapeHtml(r.name)}${isBlocked ? ' 🚫' : ''}<div class="admin-updated">সর্বশেষ: ${updatedStr}</div></div>
       <div class="admin-pct">${r.pct}%</div>
       <div class="admin-bar-wrap"><div class="admin-bar-fill" style="width:${r.pct}%"></div></div>
-      <div class="admin-chev" style="margin-left:6px; color:var(--muted); transition:transform .2s;${isOpen?'transform:rotate(180deg);':''}">▾</div>
+      <div class="admin-actions">
+        <button class="admin-block-btn admin-logout-btn" data-logout="${r.id}" title="শুধু বর্তমান সেশন লগ-আউট করাবে">লগ-আউট</button>
+        <button class="admin-block-btn ${isBlocked?'is-blocked':''}" data-block="${r.id}">${isBlocked ? 'আনব্লক' : 'ব্লক'}</button>
+        <div class="admin-chev" style="color:var(--muted); transition:transform .2s;${isOpen?'transform:rotate(180deg);':''}">▾</div>
+      </div>
     `;
+    head.querySelector('[data-logout]').addEventListener('click', (e)=>{
+      e.stopPropagation();
+      if(confirm(`${r.name}-কে এখনই লগ-আউট করাতে চাও? সে চাইলে আবার লগইন করতে পারবে (এটা ব্লক না)।`)){
+        db.ref('forceLogout/' + r.id).set(Date.now());
+      }
+    });
+    head.querySelector('[data-block]').addEventListener('click', (e)=>{
+      e.stopPropagation();
+      if(isBlocked){
+        db.ref('blockedUsers/' + r.id).remove();
+      } else if(confirm(`${r.name}-কে ব্লক করতে চাও? সে সাথে সাথে লগ-আউট হয়ে যাবে ও আর ট্র্যাকারে ঢুকতে পারবে না।`)){
+        db.ref('blockedUsers/' + r.id).set(true);
+      }
+    });
     head.addEventListener('click', ()=>{
       adminOpenStudentId = isOpen ? null : r.id;
       renderAdminList(rows);
