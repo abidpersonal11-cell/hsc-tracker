@@ -630,9 +630,19 @@ function stripUiFlags(subjects){
   });
 }
 
+// Firebase কখনো কখনো "sparse" অ্যারেকে (মাঝখানের কোনো ইনডেক্স বাদ পড়া থাকলে) আসল
+// অ্যারে হিসেবে ফেরত না দিয়ে সাধারণ অবজেক্ট হিসেবে ফেরত দেয় (যেমন {0:.., 2:..})।
+// এটা ধরা না থাকলে .forEach/.map কল করলেই ক্র্যাশ করত, ফলে সেই স্টুডেন্টের
+// নিজের অ্যাপ বা এডমিন ওভারভিউ — দুটোই ফাঁকা/ভাঙা দেখাতো।
+function toArray(val){
+  if(Array.isArray(val)) return val;
+  if(val && typeof val === 'object') return Object.values(val);
+  return [];
+}
+
 function migrateSubjects(existing){
   const byId = {};
-  (existing||[]).forEach(s=>{ if(s && s.id) byId[s.id] = s; });
+  toArray(existing).forEach(s=>{ if(s && s.id) byId[s.id] = s; });
   return DEFAULT_SUBJECTS.map(t=>{
     if(byId[t.id]) return byId[t.id];
     return {
@@ -1034,8 +1044,9 @@ function startSync(){
   myRef.on('value', snap=>{
     const val = snap.val();
     if(val && val.subjects){
-      const migrated = migrateSubjects(val.subjects);
-      const hadStrayOpenFlag = val.subjects.some(s=>s && s._open);
+      const rawSubjects = toArray(val.subjects);
+      const migrated = migrateSubjects(rawSubjects);
+      const hadStrayOpenFlag = rawSubjects.some(s=>s && s._open);
       migrated.forEach(s=>{ delete s._open; }); // never trust a persisted open-state
       state.subjects = migrated;
       state.examDate = val.examDate || '2027-07-01';
@@ -1047,7 +1058,7 @@ function startSync(){
       renderStreak();
       syncLeaderboardEntry();
       saveLocalCache();
-      const oldIds = val.subjects.map(s=>s.id).sort().join(',');
+      const oldIds = rawSubjects.map(s=>s && s.id).sort().join(',');
       const newIds = migrated.map(s=>s.id).sort().join(',');
       if(oldIds !== newIds || hadStrayOpenFlag){
         myRef.update({ subjects: stripUiFlags(migrated), lastUpdated: Date.now() });
@@ -1405,15 +1416,21 @@ function loadAdminData(){
     const all = snap.val() || {};
     adminDataCache = all;
     const rows = Object.entries(all).map(([id, s])=>{
-      const subjects = s.subjects || [];
-      let total=0, done=0;
-      subjects.forEach(subj=>{
-        const chapters = Object.values(subj.chapters || {});
-        total += chapters.length;
-        done += chapters.filter(c=>c.done).length;
-      });
-      const pct = total ? Math.round((done/total)*100) : 0;
-      return { id, name: s.name || id, pct, updated: s.lastUpdated };
+      try{
+        const subjects = toArray(s.subjects);
+        let total=0, done=0;
+        subjects.forEach(subj=>{
+          if(!subj) return;
+          const chapters = Object.values(subj.chapters || {});
+          total += chapters.length;
+          done += chapters.filter(c=>c.done).length;
+        });
+        const pct = total ? Math.round((done/total)*100) : 0;
+        return { id, name: s.name || id, pct, updated: s.lastUpdated };
+      }catch(e){
+        console.error('admin row build failed for', id, e);
+        return { id, name: (s && s.name) || id, pct: 0, updated: s && s.lastUpdated };
+      }
     }).sort((a,b)=>b.pct - a.pct);
 
     lastAdminRows = rows;
