@@ -1411,8 +1411,10 @@ function loadBlockedUsers(){
   });
 }
 
+let adminDataRetryCount = 0;
 function loadAdminData(){
   db.ref('students').on('value', snap=>{
+    adminDataRetryCount = 0; // a good read means we're healthy again
     const all = snap.val() || {};
     adminDataCache = all;
     const rows = Object.entries(all).map(([id, s])=>{
@@ -1437,9 +1439,19 @@ function loadAdminData(){
     renderAdminList(rows);
     renderAdminLiveList(all);
   }, err=>{
-    document.getElementById('adminList').innerHTML =
-      '<div style="padding:16px; color:var(--warn); font-size:13px;">অ্যাক্সেস নেই — এই UID এডমিন হিসেবে সেট করা নেই (Firebase rules-এ YOUR_UID_HERE বসানো হয়েছে কিনা চেক করুন)।</div>';
     console.error(err);
+    // Firebase-এর .on() একবার এরর দিলে নিজে থেকে আর retry করে না (permanently
+    // detach হয়ে যায়) — এটা প্রায়ই ঘটে ঠিক Rules publish করার মুহূর্তে (ক্ষণস্থায়ী)।
+    // তাই কয়েকবার নিজে থেকেই আবার চেষ্টা করাচ্ছি, ম্যানুয়াল রিফ্রেশের দরকার না পড়ুক।
+    if(adminDataRetryCount < 5){
+      adminDataRetryCount++;
+      document.getElementById('adminList').innerHTML =
+        '<div style="padding:16px; color:var(--muted); font-size:13px;">লোড করতে সমস্যা হয়েছে, আবার চেষ্টা করা হচ্ছে...</div>';
+      setTimeout(loadAdminData, 2000 * adminDataRetryCount);
+    } else {
+      document.getElementById('adminList').innerHTML =
+        '<div style="padding:16px; color:var(--warn); font-size:13px;">অ্যাক্সেস নেই — এই UID এডমিন হিসেবে সেট করা নেই (Firebase rules-এ YOUR_UID_HERE বসানো হয়েছে কিনা চেক করুন)। পেজ রিফ্রেশ করেও দেখতে পারো।</div>';
+    }
   });
 }
 
