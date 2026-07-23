@@ -214,38 +214,6 @@
   .lb-bar-fill{height:100%; background:linear-gradient(90deg,var(--accent),var(--accent2));}
   .lb-pct{font-family:'JetBrains Mono',monospace; font-weight:700; font-size:13px; width:38px; text-align:right; flex-shrink:0; color:var(--accent);}
 
-  .top-cards-row{
-    display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:20px; align-items:stretch;
-  }
-  .top-cards-row .gauge-row, .top-cards-row .timer-wrap{ margin-bottom:0; }
-  .top-cards-row .gauge-row{
-    flex-direction:row; text-align:left; align-items:center; gap:10px;
-    padding:14px 10px; flex-wrap:nowrap;
-  }
-  .top-cards-row .gauge{ width:76px; height:76px; flex-shrink:0; }
-  .top-cards-row .gauge .pct{ font-size:16px; }
-  .top-cards-row .gauge .pct-lbl{ font-size:7.5px; }
-  .top-cards-row .status-block{ min-width:0; flex:1; }
-  .top-cards-row .status-title{ font-size:14px; line-height:1.3; font-weight:700; }
-  .top-cards-row .status-desc{ display:none; }
-  .top-cards-row .timer-wrap{ padding:14px 10px; }
-  .top-cards-row .timer-wrap h2{ font-size:14px !important; }
-  .top-cards-row .timer-wrap p{ display:none; }
-  .top-cards-row .timer-display{ font-size:32px; margin:4px 0 10px; letter-spacing:0; }
-  .top-cards-row .timer-presets{ gap:4px; margin-bottom:9px; }
-  .top-cards-row .preset-btn{ padding:6px 10px; font-size:11.5px; }
-  .top-cards-row .timer-custom-inline input{ width:46px; padding:6px; font-size:11.5px; }
-  .top-cards-row .timer-custom-inline .btn{ padding:6px 10px; font-size:11.5px; }
-  .top-cards-row .timer-controls{ gap:5px; }
-  .top-cards-row .timer-controls .btn{ padding:7px 10px; font-size:11.5px; }
-  .top-cards-row .timer-controls .btn.primary{ padding:7px 12px; font-size:12px; }
-  @media (max-width:340px){
-    .top-cards-row{ grid-template-columns:1fr; }
-  }
-  @media (max-width:420px){
-    .wrap{ padding-left:10px; padding-right:10px; }
-  }
-
   .gauge-row{
     display:flex; gap:28px; align-items:center; flex-wrap:wrap; margin-bottom:22px;
     background:var(--panel); border:1px solid var(--border); border-radius:18px; padding:20px;
@@ -458,7 +426,6 @@
   </div>
 
   <div id="mainView">
-    <div class="top-cards-row">
     <div class="gauge-row">
       <div class="gauge">
         <svg width="140" height="140" viewBox="0 0 140 140">
@@ -500,12 +467,9 @@
       </div>
       <canvas id="pipCanvas" width="200" height="110" style="display:none;"></canvas>
       <video id="pipVideo" muted playsinline style="display:none; width:1px; height:1px;"></video>
-    </div>
-    </div>
 
-    <div class="timer-wrap" style="text-align:left;">
       <div class="study-history">
-        <h3 style="font-size:13.5px; color:var(--muted); margin:0 0 10px; text-align:left; font-weight:600;">গত ৭ দিনের পড়াশোনা</h3>
+        <h3 style="font-size:13.5px; color:var(--muted); margin:18px 0 10px; text-align:left; font-weight:600;">গত ৭ দিনের পড়াশোনা</h3>
         <div id="studyHistoryList"></div>
       </div>
     </div>
