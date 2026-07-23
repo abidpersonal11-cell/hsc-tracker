@@ -1450,7 +1450,9 @@ function loadAdminData(){
       setTimeout(loadAdminData, 2000 * adminDataRetryCount);
     } else {
       document.getElementById('adminList').innerHTML =
-        '<div style="padding:16px; color:var(--warn); font-size:13px;">অ্যাক্সেস নেই — এই UID এডমিন হিসেবে সেট করা নেই (Firebase rules-এ YOUR_UID_HERE বসানো হয়েছে কিনা চেক করুন)। পেজ রিফ্রেশ করেও দেখতে পারো।</div>';
+        '<div style="padding:16px; color:var(--warn); font-size:13px;">'
+        + 'লোড করা যাচ্ছে না।<br>এরর: <b>' + escapeHtml(err.code || 'unknown') + '</b><br>'
+        + escapeHtml(err.message || '') + '</div>';
     }
   });
 }
@@ -1520,6 +1522,7 @@ function renderAdminList(rows){
     return;
   }
   rows.forEach(r=>{
+   try{
     const isOpen = adminOpenStudentId === r.id;
     const isBlocked = !!blockedUsersCache[r.id];
     const row = document.createElement('div');
@@ -1539,13 +1542,15 @@ function renderAdminList(rows){
         <div class="admin-chev" style="color:var(--muted); transition:transform .2s;${isOpen?'transform:rotate(180deg);':''}">▾</div>
       </div>
     `;
-    head.querySelector('[data-logout]').addEventListener('click', (e)=>{
+    const logoutBtn = head.querySelector('[data-logout]');
+    if(logoutBtn) logoutBtn.addEventListener('click', (e)=>{
       e.stopPropagation();
       if(confirm(`${r.name}-কে এখনই লগ-আউট করাতে চাও? সে চাইলে আবার লগইন করতে পারবে (এটা ব্লক না)।`)){
         db.ref('forceLogout/' + r.id).set(Date.now());
       }
     });
-    head.querySelector('[data-block]').addEventListener('click', (e)=>{
+    const blockBtn = head.querySelector('[data-block]');
+    if(blockBtn) blockBtn.addEventListener('click', (e)=>{
       e.stopPropagation();
       if(isBlocked){
         db.ref('blockedUsers/' + r.id).remove();
@@ -1601,6 +1606,9 @@ function renderAdminList(rows){
     }
 
     list.appendChild(row);
+   }catch(e){
+     console.error('admin row render failed for', r && r.id, e);
+   }
   });
 }
 
