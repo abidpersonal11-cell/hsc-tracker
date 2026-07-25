@@ -134,18 +134,20 @@
 
   .countdown{
     position:relative; z-index:1; text-align:center; min-width:230px;
-    background:#fff; border:1px solid var(--border); border-radius:16px; padding:14px 16px;
-    box-shadow:0 8px 20px rgba(79,70,229,0.10);
+    background:linear-gradient(135deg, var(--accent), var(--accent2)); border:none; border-radius:16px; padding:14px 16px;
+    box-shadow:0 10px 24px rgba(79,70,229,0.30);
   }
+  .countdown .lbl-top{font-size:11px; color:rgba(255,255,255,0.85); letter-spacing:0.05em; margin-bottom:6px; font-weight:600;}
   .cd-grid{ display:flex; align-items:baseline; justify-content:center; gap:4px; }
   .cd-unit{ display:flex; flex-direction:column; align-items:center; min-width:38px; }
-  .cd-num{ font-size:22px; font-weight:700; color:var(--accent); line-height:1; }
-  .cd-lbl{ font-size:9px; color:var(--muted); letter-spacing:0.05em; text-transform:uppercase; margin-top:3px; }
-  .cd-sep{ font-size:20px; font-weight:700; color:var(--border); align-self:flex-start; margin-top:1px; }
-  .countdown .lbl{font-size:10px; color:var(--muted); letter-spacing:0.08em; text-transform:uppercase; margin-top:4px;}
+  .cd-num{ font-size:22px; font-weight:700; color:#fff; line-height:1; }
+  .cd-lbl{ font-size:9px; color:rgba(255,255,255,0.75); letter-spacing:0.05em; text-transform:uppercase; margin-top:3px; }
+  .cd-sep{ font-size:20px; font-weight:700; color:rgba(255,255,255,0.5); align-self:flex-start; margin-top:1px; }
+  .countdown .lbl{font-size:10px; color:rgba(255,255,255,0.75); letter-spacing:0.08em; text-transform:uppercase; margin-top:4px;}
   .countdown input{
-    margin-top:8px; background:var(--panel2); border:1px solid var(--border); color:var(--muted);
+    margin-top:8px; background:rgba(255,255,255,0.18); border:1px solid rgba(255,255,255,0.3); color:#fff;
     font-size:10.5px; font-family:'JetBrains Mono',monospace; padding:4px 6px; border-radius:6px;
+    color-scheme: dark;
   }
 
   .streak-pill{
@@ -395,6 +397,7 @@
       <div class="sub">গ্রুপ স্টাডি সিলেবাস ট্র্যাকার</div>
     </div>
     <div class="countdown">
+      <div class="lbl-top">পরীক্ষার শুরু হতে বাকি</div>
       <div class="cd-grid">
         <div class="cd-unit"><div class="cd-num mono" id="cdDays">--</div><div class="cd-lbl">দিন</div></div>
         <div class="cd-sep">:</div>
@@ -404,7 +407,6 @@
         <div class="cd-sep">:</div>
         <div class="cd-unit"><div class="cd-num mono" id="cdSecs">--</div><div class="cd-lbl">সেকেন্ড</div></div>
       </div>
-      <div class="lbl" style="margin-top:6px;">পরীক্ষার বাকি সময়</div>
       <input type="date" id="examDate">
     </div>
     <div class="top-actions">
