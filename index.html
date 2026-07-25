@@ -508,7 +508,6 @@
 
   <footer>
     <div class="credit">Group Study Tracker · HSC 2027</div>
-    <button class="btn warn" id="resetBtn">আমার প্রগ্রেস রিসেট</button>
   </footer>
 </div>
 
@@ -1419,16 +1418,6 @@ document.addEventListener('change', (e)=>{
       saveLocalCache();
       myRef.update({ subjects: stripUiFlags(state.subjects), lastUpdated: Date.now() });
     }
-  }
-});
-
-document.getElementById('resetBtn').addEventListener('click', ()=>{
-  if(confirm('তোমার সব প্রগ্রেস রিসেট করতে চাও? এটা পূর্বাবস্থায় ফেরানো যাবে না।')){
-    myRef.set({
-      name: myName, examDate: state.examDate || '2027-07-01',
-      streak: {count:0, lastDate:null}, studyHistory: {},
-      subjects: defaultSubjectsState(), lastUpdated: Date.now()
-    });
   }
 });
 
