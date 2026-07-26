@@ -712,7 +712,7 @@ function saveLocalCache(){
   if(!myId) return;
   try{
     localStorage.setItem(localCacheKey(), JSON.stringify({
-      subjects: state.subjects, examDate: state.examDate,
+      subjects: stripUiFlags(state.subjects), examDate: state.examDate,
       streak: state.streak, studyHistory: state.studyHistory
     }));
   }catch(e){ console.error('local cache save failed', e); }
@@ -1054,6 +1054,7 @@ function startSync(){
   const cached = loadLocalCache();
   if(cached){
     state.subjects = migrateSubjects(cached.subjects || []);
+    state.subjects.forEach(s=>{ delete s._open; }); // self-heal any cache saved before this fix
     state.examDate = cached.examDate || '2027-07-01';
     state.streak = cached.streak || {count:0, lastDate:null};
     state.studyHistory = cached.studyHistory || {};
