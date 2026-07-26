@@ -1084,10 +1084,21 @@ function startSync(){
   myRef.on('value', snap=>{
     const val = snap.val();
     if(val && val.subjects){
+      // টিক দেওয়ার সাথে সাথে myRef.update() হয়, যেটা এই .on('value')-কেই আবার
+      // ট্রিগার করে (Firebase নিজের লেখাটাই ফেরত পাঠায়) — তখন state.subjects
+      // পুরোপুরি নতুন অবজেক্ট দিয়ে বদলে যায়, যেখানে _open কখনো থাকে না (ইচ্ছাকৃতভাবে,
+      // যাতে এটা Firebase-এ সেভ না হয়) — ফলে খোলা কার্ডটা প্রতিবার টিক দিলেই বন্ধ
+      // হয়ে যাচ্ছিল। তাই কোন সাবজেক্ট এই মুহূর্তে খোলা আছে সেটা মনে রেখে নতুন
+      // ডেটাতেও সেটা আবার বসিয়ে দিচ্ছি।
+      const currentlyOpenId = (state.subjects.find(s=>s._open) || {}).id;
       const rawSubjects = toArray(val.subjects);
       const migrated = migrateSubjects(rawSubjects);
       const hadStrayOpenFlag = rawSubjects.some(s=>s && s._open);
       migrated.forEach(s=>{ delete s._open; }); // never trust a persisted open-state
+      if(currentlyOpenId){
+        const stillThere = migrated.find(s=>s.id===currentlyOpenId);
+        if(stillThere) stillThere._open = true;
+      }
       state.subjects = migrated;
       state.examDate = val.examDate || '2027-07-01';
       state.streak = val.streak || {count:0, lastDate:null};
