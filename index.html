@@ -281,6 +281,29 @@
   .status-block .status-title{font-size:18.5px; font-weight:700; margin-bottom:6px; color:#161a2e;}
   .status-block .status-desc{color:var(--muted); font-size:14.5px; line-height:1.6;}
 
+  .race-track{ position:relative; height:30px; margin-top:12px; min-width:180px; overflow:hidden; }
+  .race-lane{
+    position:absolute; left:0; right:0; top:23px; height:2px;
+    background:repeating-linear-gradient(90deg, var(--border) 0 6px, transparent 6px 12px);
+  }
+  .racer{
+    position:absolute; top:2px; left:-10%; font-size:19px; line-height:1;
+    animation-timing-function:linear; animation-iteration-count:infinite;
+  }
+  .racer-a{ animation-name:race-a; animation-duration:3s; }
+  .racer-b{ animation-name:race-b; animation-duration:3.6s; }
+  @keyframes race-a{ from{ left:-10%; } to{ left:110%; } }
+  @keyframes race-b{ from{ left:-25%; } to{ left:110%; } }
+  .racer-legs{
+    display:inline-block;
+    animation:racer-run 0.3s ease-in-out infinite;
+  }
+  @keyframes racer-run{
+    0%, 100%{ transform:scaleX(-1) translateY(0) rotate(8deg); }
+    50%{ transform:scaleX(-1) translateY(-4px) rotate(-8deg); }
+  }
+  @media (prefers-reduced-motion: reduce){ .racer{ animation:none; left:10%; } .racer-legs{ animation:none; } }
+
   .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:14px;}
   .card{background:var(--panel); border:1px solid var(--border); border-radius:16px; overflow:hidden;
     box-shadow:0 4px 14px rgba(30,35,51,0.05);}
@@ -536,6 +559,11 @@
       <div class="status-block">
         <div class="status-title" id="statusTitle">প্রস্তুতি শুরু হয়নি</div>
         <div class="status-desc" id="statusDesc">প্রতিটি সাবজেক্ট খুলে অধ্যায়গুলো চেক করা শুরু করুন।</div>
+        <div class="race-track" aria-hidden="true">
+          <div class="race-lane"></div>
+          <span class="racer racer-a"><span class="racer-legs">🏃🏻‍♂️</span></span>
+          <span class="racer racer-b"><span class="racer-legs">🏃🏻‍♀️</span></span>
+        </div>
       </div>
     </div>
 
