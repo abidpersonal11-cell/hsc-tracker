@@ -149,7 +149,7 @@
   /* ---- চার কোনায় চারটুকরা কালো বর্ডার (স্ট্যাটাস/ওয়ার্ম-আপ কার্ডের জন্য) ---- */
   .corner-border{ position:relative; z-index:0; }
   .corner-border::before{
-    content:''; position:absolute; inset:-4px; border-radius:inherit;
+    content:''; position:absolute; inset:0; border-radius:inherit;
     pointer-events:none; z-index:2;
     background:
       linear-gradient(to right, #000 4px, transparent 4px) 0 0,
@@ -161,7 +161,7 @@
       linear-gradient(to top, #000 4px, transparent 4px) 0 100%,
       linear-gradient(to top, #000 4px, transparent 4px) 100% 100%;
     background-repeat:no-repeat;
-    background-size:38px 38px;
+    background-size:52px 52px;
   }
   .btn{
     background:#ffffffcc; border:1px solid var(--border); color:var(--ink); padding:8px 15px;
