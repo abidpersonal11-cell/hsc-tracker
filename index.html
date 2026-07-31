@@ -150,7 +150,7 @@
   .corner-border{ position:relative; z-index:0; }
   .corner-border::before{
     content:''; position:absolute; inset:-4px; border-radius:inherit;
-    pointer-events:none; z-index:-1;
+    pointer-events:none; z-index:2;
     background:
       linear-gradient(to right, #000 4px, transparent 4px) 0 0,
       linear-gradient(to right, #000 4px, transparent 4px) 0 100%,
@@ -161,7 +161,7 @@
       linear-gradient(to top, #000 4px, transparent 4px) 0 100%,
       linear-gradient(to top, #000 4px, transparent 4px) 100% 100%;
     background-repeat:no-repeat;
-    background-size:24px 24px;
+    background-size:38px 38px;
   }
   .btn{
     background:#ffffffcc; border:1px solid var(--border); color:var(--ink); padding:8px 15px;
@@ -1204,6 +1204,10 @@ function startSync(){
   setSyncPill('busy','সিঙ্ক হচ্ছে...');
   myRef = db.ref('students/' + myId);
 
+  // টাইমার আগে থেকেই চলছিল (যেমন অফলাইনে শুরু করা, বা রিলোডের আগে থেকেই রানিং) —
+  // এতক্ষণে জমে থাকা যেকোনো unaccounted সময় myRef রেডি হওয়ার সাথে সাথেই ফ্লাশ করো।
+  flushSessionElapsed();
+
   // ইন্টারনেট থাকুক বা না থাকুক, আগের সেভ করা ডেটা সাথে সাথে দেখিয়ে দাও —
   // Firebase কানেক্ট হলে নিচের .on('value') সেটাকে আপডেট করে দেবে।
   const cached = loadLocalCache();
@@ -1276,7 +1280,10 @@ function startSync(){
     console.error(err);
   });
 
-  window.addEventListener('online', ()=> setSyncPill('busy','সিঙ্ক হচ্ছে...'));
+  window.addEventListener('online', ()=>{
+    setSyncPill('busy','সিঙ্ক হচ্ছে...');
+    if(timerRunning) flushSessionElapsed();
+  });
   window.addEventListener('offline', ()=> setSyncPill('err','অফলাইন — শেষ সেভ করা অবস্থা দেখানো হচ্ছে'));
 
   startLeaderboard();
@@ -1852,7 +1859,7 @@ const TIMER_LS_KEY = 'hsc-study-timer-state';
 function saveTimerState(){
   try{
     localStorage.setItem(TIMER_LS_KEY, JSON.stringify({
-      timerTotalSeconds, timerRemaining, timerEndAt, timerRunning, sessionStartAt
+      timerTotalSeconds, timerRemaining, timerEndAt, timerRunning, sessionStartAt, lastAccountedAt
     }));
   }catch(e){}
 }
@@ -1867,7 +1874,14 @@ function loadTimerState(){
       timerEndAt = s.timerEndAt;
       timerRunning = true;
       sessionStartAt = s.sessionStartAt || Date.now();
-      lastAccountedAt = Date.now();
+      // আগে এখানে সরাসরি Date.now() বসানো হতো, যার ফলে শেষবার সফলভাবে ফ্লাশ
+      // করার (lastAccountedAt) পর থেকে এই মুহূর্তে রিলোড হওয়া পর্যন্ত যে সময়টুকু
+      // পড়া হয়েছে সেটা হিসাব থেকেই বাদ পড়ে যেত — বিশেষ করে অফলাইন অবস্থায়
+      // সার্ভিস-ওয়ার্কার আপডেটের কারণে অটো-রিলোড হলে (যেটা প্রায়ই অনলাইনে ফেরার
+      // মুহূর্তেই ঘটে)। এখন পুরনো lastAccountedAt (সেভ করা থাকলে) থেকে হিসাব
+      // চালিয়ে সেই সময়টুকু উদ্ধার করা হচ্ছে, এবং startSync()-এ myRef তৈরি হওয়ার
+      // সাথে সাথেই এটা Firebase-এ ফ্লাশ করা হবে।
+      lastAccountedAt = s.lastAccountedAt || sessionStartAt;
       startTickInterval();
       startKeepAlive();
       document.getElementById('timerStartBtn').style.display = 'none';
@@ -1898,9 +1912,14 @@ function renderTimerDisplay(){
 // Flushes study-seconds accumulated since the last flush point into Firebase.
 function flushSessionElapsed(){
   if(lastAccountedAt == null) return;
+  // myRef তৈরি না হওয়া পর্যন্ত (যেমন অ্যাপ সবে খোলা হয়েছে, auth এখনো রেডি হয়নি)
+  // এখানেই থেমে যাও — lastAccountedAt এগিয়ে না দিয়ে, যাতে এই সময়টুকু হারিয়ে না যায়।
+  // myRef রেডি হওয়ার পর startSync() নিজে থেকেই আবার flushSessionElapsed() ডাকবে।
+  if(!myRef) return;
   const elapsed = Math.round((Date.now() - lastAccountedAt)/1000);
   if(elapsed > 0){ addStudySeconds(elapsed); }
   lastAccountedAt = Date.now();
+  if(timerRunning) saveTimerState();
 }
 
 function getAudioCtx(){
@@ -2089,6 +2108,7 @@ document.getElementById('timerResetBtn').addEventListener('click', ()=>{
 document.addEventListener('visibilitychange', ()=>{
   if(document.visibilityState === 'visible' && timerRunning){
     renderTimerDisplay();
+    flushSessionElapsed(); // আগে ৬০ সেকেন্ড পর্যন্ত অপেক্ষা করতে হতো, এখন সাথে সাথেই সেভ হবে
     if(currentRemaining() <= 0){ timerFinished(); }
   }
 });
