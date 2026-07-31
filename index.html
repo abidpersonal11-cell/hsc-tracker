@@ -2258,8 +2258,8 @@ document.getElementById('quoteText').textContent =
     let pulse = 1;
     if(cycleState === 'holding'){ pulseTime += 0.3; pulse = 1 + Math.sin(pulseTime)*0.03; }
 
-    const cx = W/2, cy = H/2 + 4;
-    const scale = (Math.min(W,H)/48) * pulse;
+    const cx = W/2, cy = H/2 - 10;
+    const scale = (Math.min(W,H)/40) * pulse;
     const stepsToDraw = Math.floor(steps*traceProgress);
     const tipColor = getColorAt(globalColorPhase);
 
