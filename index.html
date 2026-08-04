@@ -262,10 +262,10 @@
     box-shadow:0 8px 24px rgba(79,70,229,0.06);
   }
   .gauge{position:relative; width:140px; height:140px; flex-shrink:0; border-radius:50%;
-    background:radial-gradient(circle at 35% 30%, #241a3d, #0e0a1c 75%);
-    box-shadow:0 6px 18px rgba(20,10,40,0.25), inset 0 0 0 1px rgba(255,255,255,0.06);
+    background:#000;
+    border:5px solid var(--accent2);
+    box-shadow:0 6px 18px rgba(20,10,40,0.25);
   }
-  .gauge canvas{display:block; width:140px; height:140px; border-radius:50%;}
   .gauge .center{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none;}
   .gauge .pct{font-size:28px; font-weight:700; font-family:'JetBrains Mono',monospace; color:#fff; text-shadow:0 0 10px rgba(124,107,240,0.6);}
   .gauge .pct-lbl{color:rgba(255,255,255,0.65) !important;}
@@ -578,7 +578,6 @@
   <div id="mainView">
     <div class="gauge-row corner-border">
       <div class="gauge">
-        <canvas id="heartCanvas" width="140" height="140"></canvas>
         <div class="center">
           <div class="pct mono" id="overallPct">0%</div>
           <div class="pct-lbl">সম্পন্ন</div>
@@ -1160,30 +1159,37 @@ function renderStudyHistory(){
 
 // Adds elapsed study seconds (from the timer) to today's running total (persisted permanently per date).
 // Streak only increases once per day, after 2+ hours (7200s) of tracked timer study that day.
+//
+// এটা transaction() দিয়ে করা হয় — read-then-write (লোকাল মান + sec, তারপর .update())
+// করলে যদি কখনো state.studyHistory মুহূর্তের জন্য পুরনো/ফাঁকা থাকে (যেমন পেজ সবে
+// রিলোড হয়েছে, ক্যাশ এখনো লোড হয়নি), তাহলে সার্ভারের আসল টোটাল ভুলবশত ছোট মান
+// দিয়ে ওভাররাইট (মুছে) হয়ে যেতে পারে — এটা ঠিক এই সমস্যাতেই আগে একবার সারাদিনের
+// পড়া ০ করে দিয়েছিল। transaction() সবসময় সার্ভারের *বর্তমান* মানের উপর ভিত্তি করে
+// যোগ করে (লোকাল state যা-ই থাকুক), আর অফলাইনে করা transaction অনলাইনে ফেরার পর
+// নিজে থেকেই সঠিকভাবে সার্ভারের আসল মানের সাথে মিলিয়ে নেয় — তাই এই বাগটা আর সম্ভব না।
 function addStudySeconds(sec){
   if(!myRef || sec <= 0) return;
   const today = todayStr();
-  const hist = Object.assign({}, state.studyHistory || {});
-  const newTodayTotal = (hist[today] || 0) + sec;
-  hist[today] = newTodayTotal;
-  state.studyHistory = hist;
 
-  // IMPORTANT: only write today's leaf (studyHistory/<date>), never the whole
-  // studyHistory object. Firebase's update() fully replaces whatever value is
-  // given at a path, so writing the entire local `hist` object here would
-  // overwrite (and could permanently erase) any other days' totals already
-  // saved on the server if our local cache was ever a moment out of date
-  // (e.g. right after opening the app, or with more than one tab/device open).
-  const updates = {};
-  updates['studyHistory/' + today] = newTodayTotal;
-  if(newTodayTotal >= 7200 && state.streak.lastDate !== today){
-    const newStreak = computeNewStreak(state.streak);
-    updates.streak = newStreak;
-    state.streak = newStreak;
-  }
+  // শুধু UI-তে সাথে সাথে দেখানোর জন্য (optimistic) — সোর্স অফ ট্রুথ নিচের transaction।
+  const hist = Object.assign({}, state.studyHistory || {});
+  hist[today] = (hist[today] || 0) + sec;
+  state.studyHistory = hist;
   renderStreak();
   saveLocalCache();
-  myRef.update(updates);
+
+  myRef.child('studyHistory/' + today).transaction(current => (current || 0) + sec)
+    .then(result=>{
+      if(!result.committed) return;
+      const confirmedTotal = result.snapshot.val() || 0;
+      if(confirmedTotal >= 7200 && state.streak.lastDate !== today){
+        const newStreak = computeNewStreak(state.streak);
+        state.streak = newStreak;
+        renderStreak();
+        myRef.update({ streak: newStreak });
+      }
+    })
+    .catch(err=> console.error('study time transaction failed', err));
 }
 
 function syncLeaderboardEntry(){
@@ -1204,10 +1210,6 @@ function startSync(){
   setSyncPill('busy','সিঙ্ক হচ্ছে...');
   myRef = db.ref('students/' + myId);
 
-  // টাইমার আগে থেকেই চলছিল (যেমন অফলাইনে শুরু করা, বা রিলোডের আগে থেকেই রানিং) —
-  // এতক্ষণে জমে থাকা যেকোনো unaccounted সময় myRef রেডি হওয়ার সাথে সাথেই ফ্লাশ করো।
-  flushSessionElapsed();
-
   // ইন্টারনেট থাকুক বা না থাকুক, আগের সেভ করা ডেটা সাথে সাথে দেখিয়ে দাও —
   // Firebase কানেক্ট হলে নিচের .on('value') সেটাকে আপডেট করে দেবে।
   const cached = loadLocalCache();
@@ -1223,6 +1225,13 @@ function startSync(){
     renderStreak();
     if(!navigator.onLine) setSyncPill('err','অফলাইন — শেষ সেভ করা অবস্থা দেখানো হচ্ছে');
   }
+
+  // টাইমার আগে থেকেই চলছিল (যেমন অফলাইনে শুরু করা, বা রিলোডের আগে থেকেই রানিং) —
+  // এতক্ষণে জমে থাকা যেকোনো unaccounted সময় এখন ফ্লাশ করো (এতক্ষণে state.studyHistory
+  // অন্তত লোকাল ক্যাশের মান দিয়ে ভরা, খালি না) — যদিও addStudySeconds এখন transaction
+  // ব্যবহার করে তাই এটা আর সার্ভারের ডেটা মুছে দিতে পারবে না, তবু optimistic UI-এর
+  // মান ঠিক রাখতে ক্যাশ লোড হওয়ার পরই এটা চালানো ভালো।
+  flushSessionElapsed();
 
   myRef.once('value').then(snap=>{
     if(!snap.exists()){
@@ -2210,183 +2219,6 @@ const MOTIVATIONAL_QUOTES = [
 ];
 document.getElementById('quoteText').textContent =
   MOTIVATIONAL_QUOTES[Math.floor(Math.random() * MOTIVATIONAL_QUOTES.length)];
-
-// ---------------- HEART ANIMATION (সার্বিক অগ্রগতি কার্ডের ছোট্ট অ্যানিমেশন) ----------------
-// রেফারেন্স কোড থেকে অনুপ্রাণিত, কিন্তু ছোট্ট কার্ডের জন্য হালকা করে বানানো —
-// সাউন্ড/স্পিচ/ভাইব্রেশন/ফুলস্ক্রিন এলিমেন্ট (তারা, কুয়াশা, ভিনিয়েট ইত্যাদি) বাদ,
-// শুধু হার্ট আঁকা-জ্বলা অ্যানিমেশনটুকু রাখা হয়েছে। আসল % সংখ্যা আলাদা HTML লেয়ারে,
-// এই ক্যানভাস থেকে প্রভাবিত হয় না।
-(function(){
-  const canvas = document.getElementById('heartCanvas');
-  if(!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const W = canvas.width, H = canvas.height;
-
-  const colorStops = [
-    { core:[255,243,196], glow:[255,138,30] },
-    { core:[245,208,255], glow:[178,59,255] },
-    { core:[232,255,224], glow:[57,255,106] },
-    { core:[255,214,240], glow:[255,59,208] },
-  ];
-  function lerp(a,b,t){ return a+(b-a)*t; }
-  function lerpRGB(c1,c2,t){ return [Math.round(lerp(c1[0],c2[0],t)), Math.round(lerp(c1[1],c2[1],t)), Math.round(lerp(c1[2],c2[2],t))]; }
-  function rgbStr(c){ return `rgb(${c[0]},${c[1]},${c[2]})`; }
-  function getColorAt(phase){
-    const n = colorStops.length;
-    const p = ((phase % n) + n) % n;
-    const i0 = Math.floor(p), i1 = (i0+1)%n, t = p-i0;
-    return { core: rgbStr(lerpRGB(colorStops[i0].core, colorStops[i1].core, t)),
-             glow: rgbStr(lerpRGB(colorStops[i0].glow, colorStops[i1].glow, t)) };
-  }
-
-  function heartPoint(t, scale, cx, cy){
-    const x = 16*Math.pow(Math.sin(t),3);
-    const y = -(13*Math.cos(t) - 5*Math.cos(2*t) - 2*Math.cos(3*t) - Math.cos(4*t));
-    return { x: cx + x*scale, y: cy + y*scale };
-  }
-
-  let dustParticles = [];
-  let sparkles = [];
-  let traceProgress = 0, globalColorPhase = 0;
-  let cycleState = 'drawing', holdTimer = 0, fadeAlpha = 1, pulseTime = 0;
-  const TRACE_FRAMES = 46, HOLD_FRAMES = 10, FADE_FRAMES = 14;
-  const TRACE_SPEED = 1/TRACE_FRAMES;
-  const COLOR_SPEED = colorStops.length/TRACE_FRAMES;
-  const steps = 160;
-
-  class Dust{
-    constructor(x,y,opts={}){
-      this.x=x; this.y=y;
-      const angle = opts.angle!==undefined?opts.angle:Math.random()*Math.PI*2;
-      const speed = opts.speed!==undefined?opts.speed:Math.random()*0.5+0.1;
-      this.vx=Math.cos(angle)*speed; this.vy=Math.sin(angle)*speed-0.12;
-      this.life=1; this.decay=opts.decay||(Math.random()*0.02+0.012);
-      this.size=opts.size||(Math.random()*0.6+0.15);
-      this.gravity=opts.gravity||false;
-    }
-    update(){
-      this.x+=this.vx; this.y+=this.vy;
-      if(this.gravity){ this.vy+=0.05; this.vx*=0.99; } else { this.vx*=0.98; this.vy*=0.98; }
-      this.life-=this.decay;
-    }
-    draw(colorStr,alphaMul){
-      if(this.life<=0) return;
-      ctx.globalAlpha = Math.max(this.life,0)*alphaMul;
-      ctx.fillStyle = colorStr;
-      ctx.beginPath(); ctx.arc(this.x,this.y,this.size,0,Math.PI*2); ctx.fill();
-    }
-  }
-  function spawnDustAt(x,y,count,opts){ for(let i=0;i<count;i++) dustParticles.push(new Dust(x,y,opts)); }
-  function spawnShower(points){
-    for(let i=0;i<points.length;i+=3){
-      const p = points[i]; if(!p) continue;
-      dustParticles.push(new Dust(p.x,p.y,{
-        angle:-Math.PI/2+(Math.random()-0.5)*1.2, speed:Math.random()*1+0.3,
-        gravity:true, decay:Math.random()*0.02+0.012, size:Math.random()*0.8+0.25
-      }));
-    }
-  }
-  function drawSparkle(x,y,size,alpha,color){
-    ctx.save(); ctx.translate(x,y); ctx.globalAlpha=alpha;
-    ctx.strokeStyle=color; ctx.lineWidth=1; ctx.shadowBlur=6; ctx.shadowColor=color;
-    ctx.beginPath();
-    ctx.moveTo(-size,0); ctx.lineTo(size,0);
-    ctx.moveTo(0,-size); ctx.lineTo(0,size);
-    ctx.stroke(); ctx.restore();
-  }
-  function drawHazyBlob(x,y,radius,color,alpha){
-    const grad = ctx.createRadialGradient(x,y,0,x,y,radius);
-    grad.addColorStop(0, color.core.replace('rgb','rgba').replace(')',`,${0.4*alpha})`));
-    grad.addColorStop(1, color.glow.replace('rgb','rgba').replace(')',',0)'));
-    ctx.save(); ctx.fillStyle=grad; ctx.beginPath(); ctx.arc(x,y,radius,0,Math.PI*2); ctx.fill(); ctx.restore();
-  }
-
-  function draw(){
-    ctx.clearRect(0,0,W,H);
-
-    let pulse = 1;
-    if(cycleState === 'holding'){ pulseTime += 0.3; pulse = 1 + Math.sin(pulseTime)*0.03; }
-
-    const cx = W/2, cy = H/2 - 10;
-    const scale = (Math.min(W,H)/40) * pulse;
-    const stepsToDraw = Math.floor(steps*traceProgress);
-    const tipColor = getColorAt(globalColorPhase);
-
-    ctx.save();
-    ctx.globalAlpha = fadeAlpha;
-    ctx.lineWidth = 2;
-    ctx.shadowBlur = 8;
-    let rightTip=null, leftTip=null;
-    const outlinePoints = [];
-    for(const dir of [1,-1]){
-      let prevPoint = null;
-      for(let i=0;i<=stepsToDraw;i++){
-        const t = dir*(i/steps)*Math.PI;
-        const p = heartPoint(t, scale, cx, cy);
-        if(prevPoint){
-          const segPhase = globalColorPhase - (stepsToDraw-i)*(colorStops.length/steps);
-          const segColor = getColorAt(segPhase);
-          ctx.strokeStyle = segColor.core;
-          ctx.shadowColor = segColor.glow;
-          ctx.beginPath(); ctx.moveTo(prevPoint.x, prevPoint.y); ctx.lineTo(p.x, p.y); ctx.stroke();
-        }
-        prevPoint = p; outlinePoints.push(p);
-        if(dir===1) rightTip=p; else leftTip=p;
-      }
-    }
-    ctx.restore();
-
-    const glowRadius = scale*1.6;
-    if(cycleState === 'drawing'){
-      if(rightTip) drawHazyBlob(rightTip.x, rightTip.y, glowRadius, tipColor, fadeAlpha);
-      if(leftTip && stepsToDraw>0) drawHazyBlob(leftTip.x, leftTip.y, glowRadius, tipColor, fadeAlpha);
-      if(rightTip) spawnDustAt(rightTip.x, rightTip.y, 3);
-      if(leftTip && stepsToDraw>0) spawnDustAt(leftTip.x, leftTip.y, 3);
-    } else if(rightTip){
-      drawHazyBlob(rightTip.x, rightTip.y, glowRadius, tipColor, fadeAlpha);
-    }
-
-    if(cycleState==='holding' && Math.random()<0.5){
-      const t = (Math.random()*2-1)*Math.PI;
-      const p = heartPoint(t, scale*(0.3+Math.random()*0.7), cx, cy);
-      spawnDustAt(p.x, p.y, 2);
-    }
-    if(cycleState !== 'drawing' && outlinePoints.length && Math.random()<0.3){
-      const p = outlinePoints[Math.floor(Math.random()*outlinePoints.length)];
-      sparkles.push({ x:p.x, y:p.y, life:1, size:Math.random()*3+3 });
-    }
-
-    for(let i=dustParticles.length-1;i>=0;i--){
-      const d = dustParticles[i];
-      d.update(); d.draw(tipColor.core, fadeAlpha);
-      if(d.life<=0 || d.y>H+20) dustParticles.splice(i,1);
-    }
-    ctx.globalAlpha = 1;
-    for(let i=sparkles.length-1;i>=0;i--){
-      const s = sparkles[i];
-      s.life -= 0.06;
-      if(s.life<=0){ sparkles.splice(i,1); continue; }
-      drawSparkle(s.x, s.y, s.size*s.life, s.life*fadeAlpha, tipColor.core);
-    }
-
-    if(cycleState === 'drawing'){
-      traceProgress += TRACE_SPEED;
-      globalColorPhase += COLOR_SPEED;
-      if(traceProgress >= 1){
-        traceProgress = 1; cycleState = 'holding'; holdTimer = 0; pulseTime = 0;
-      }
-    } else if(cycleState === 'holding'){
-      holdTimer++;
-      if(holdTimer > HOLD_FRAMES){ cycleState = 'fading'; spawnShower(outlinePoints); }
-    } else if(cycleState === 'fading'){
-      fadeAlpha -= 1/FADE_FRAMES;
-      if(fadeAlpha <= 0){ fadeAlpha=0; traceProgress=0; cycleState='drawing'; fadeAlpha=1; }
-    }
-
-    requestAnimationFrame(draw);
-  }
-  draw();
-})();
 
 initStudent();
 
