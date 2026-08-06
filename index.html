@@ -306,22 +306,73 @@
     background:repeating-linear-gradient(90deg, var(--border) 0 6px, transparent 6px 12px);
   }
   .racer{
-    position:absolute; top:2px; left:-10%; font-size:19px; line-height:1;
+    position:absolute; top:2px; left:0; font-size:19px; line-height:1;
     animation-timing-function:linear; animation-iteration-count:infinite;
+    will-change:transform;
   }
-  .racer-a{ animation-name:race-a; animation-duration:3s; }
-  .racer-b{ animation-name:race-b; animation-duration:3.6s; }
-  @keyframes race-a{ from{ left:-10%; } to{ left:110%; } }
-  @keyframes race-b{ from{ left:-25%; } to{ left:110%; } }
-  .racer-legs{
-    display:inline-block;
-    animation:racer-run 0.3s ease-in-out infinite;
+  .racer-a{ animation-name:race-a; animation-duration:1.8s; }
+  .racer-b{ animation-name:race-b; animation-duration:2.15s; }
+  @keyframes race-a{
+    from{ transform:translateX(calc(var(--race-track-w, 300px) * -0.1)); }
+    to{ transform:translateX(calc(var(--race-track-w, 300px) * 1.1)); }
   }
-  @keyframes racer-run{
-    0%, 100%{ transform:scaleX(-1) translateY(0) rotate(8deg); }
-    50%{ transform:scaleX(-1) translateY(-4px) rotate(-8deg); }
+  @keyframes race-b{
+    from{ transform:translateX(calc(var(--race-track-w, 300px) * -0.25)); }
+    to{ transform:translateX(calc(var(--race-track-w, 300px) * 1.1)); }
   }
-  @media (prefers-reduced-motion: reduce){ .racer{ animation:none; left:10%; } .racer-legs{ animation:none; } }
+  .racer-legs{ display:none; } /* পুরনো emoji-based রানার আর ব্যবহার হচ্ছে না */
+
+  /* ---- CSS স্টিক-ফিগার রানার (emoji-এর বদলে) ---- */
+  .runner-lean{ display:inline-block; transform:rotate(9deg); transform-origin:bottom center; }
+  .stick-figure{
+    position:relative; width:14px; height:26px; display:inline-block;
+    animation:sf-bounce 0.09s ease-in-out infinite;
+  }
+  .stick-figure.sf-blue{ --sf-color: var(--physics); }
+  .stick-figure.sf-pink{ --sf-color: var(--bangla); }
+  .sf-head{
+    position:absolute; top:0; left:4px; width:6px; height:6px; border-radius:50%;
+    background:var(--sf-color);
+  }
+  .sf-torso{
+    position:absolute; top:6px; left:6px; width:2px; height:8px; border-radius:1px;
+    background:var(--sf-color);
+  }
+  .sf-arm, .sf-leg{ position:absolute; width:2px; border-radius:1px; background:var(--sf-color); }
+  .sf-arm{ top:7px; left:6px; height:7px; transform-origin:top center; }
+  .sf-leg{ top:14px; left:6px; height:5px; transform-origin:top center; border-radius:1px 1px 0 0; }
+  .sf-shin{
+    position:absolute; top:5px; left:0; width:2px; height:5px; border-radius:0 0 1px 1px;
+    background:var(--sf-color); transform-origin:top center;
+  }
+  .sf-hand{ position:absolute; top:6px; left:-0.5px; width:3px; height:3px; border-radius:50%; background:var(--sf-color); }
+  .sf-foot{ position:absolute; bottom:0; left:-1.2px; width:4.5px; height:1.6px; border-radius:1px; background:var(--sf-color); }
+
+  /* পেছনের হাত-পা হালকা রঙে — depth এর ইলিউশন তৈরি করে, নইলে সব সমান রঙে সমতল দেখায় */
+  .sf-arm-back, .sf-leg-back{ opacity:0.55; }
+
+  @keyframes sf-bounce{ 0%,100%{ transform:translateY(0); } 50%{ transform:translateY(-2.5px); } }
+  @keyframes sf-swing{
+    0%{ transform:rotate(calc(var(--amp) * -1)); }
+    50%{ transform:rotate(var(--amp)); }
+    100%{ transform:rotate(calc(var(--amp) * -1)); }
+  }
+  @keyframes sf-knee-bend{
+    0%{ transform:rotate(3deg); }
+    50%{ transform:rotate(62deg); }
+    100%{ transform:rotate(3deg); }
+  }
+  .sf-leg{ --amp:34deg; animation:sf-swing 0.18s ease-in-out infinite; }
+  .sf-arm{ --amp:24deg; animation:sf-swing 0.18s ease-in-out infinite; }
+  /* পেছনের হাত/পা একই মুভমেন্ট, শুধু আধা-সাইকেল ডিলে করা — এতে দুটো লিম্ব
+     সবসময় নিখুঁত বিপরীত ফেজে থাকে, নড়াচড়াটা মসৃণ ও সিমেট্রিক লাগে। */
+  .sf-leg-back, .sf-arm-back{ animation-delay:-0.09s; }
+  .sf-leg-front .sf-shin{ animation:sf-knee-bend 0.18s ease-in-out infinite; }
+  .sf-leg-back .sf-shin{ animation:sf-knee-bend 0.18s ease-in-out infinite; animation-delay:-0.09s; }
+  @media (prefers-reduced-motion: reduce){
+    .stick-figure, .sf-arm, .sf-leg, .sf-shin{ animation:none; }
+  }
+  @media (prefers-reduced-motion: reduce){ .racer{ animation:none; transform:translateX(calc(var(--race-track-w, 300px) * 0.1)); } .racer-legs{ animation:none; } }
 
   .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:14px;}
   .card{background:var(--panel); border:1px solid var(--border); border-radius:16px; overflow:hidden;
@@ -588,8 +639,30 @@
         <div class="status-desc" id="statusDesc">প্রতিটি সাবজেক্ট খুলে অধ্যায়গুলো চেক করা শুরু করুন।</div>
         <div class="race-track" aria-hidden="true">
           <div class="race-lane"></div>
-          <span class="racer racer-a"><span class="racer-legs">🏃🏻‍♂️</span></span>
-          <span class="racer racer-b"><span class="racer-legs">🏃🏻‍♀️</span></span>
+          <span class="racer racer-a">
+           <span class="runner-lean">
+            <span class="stick-figure sf-blue">
+              <span class="sf-head"></span>
+              <span class="sf-torso"></span>
+              <span class="sf-arm sf-arm-front"><span class="sf-hand"></span></span>
+              <span class="sf-arm sf-arm-back"><span class="sf-hand"></span></span>
+              <span class="sf-leg sf-leg-front"><span class="sf-shin"><span class="sf-foot"></span></span></span>
+              <span class="sf-leg sf-leg-back"><span class="sf-shin"><span class="sf-foot"></span></span></span>
+            </span>
+           </span>
+          </span>
+          <span class="racer racer-b">
+           <span class="runner-lean">
+            <span class="stick-figure sf-pink">
+              <span class="sf-head"></span>
+              <span class="sf-torso"></span>
+              <span class="sf-arm sf-arm-front"><span class="sf-hand"></span></span>
+              <span class="sf-arm sf-arm-back"><span class="sf-hand"></span></span>
+              <span class="sf-leg sf-leg-front"><span class="sf-shin"><span class="sf-foot"></span></span></span>
+              <span class="sf-leg sf-leg-back"><span class="sf-shin"><span class="sf-foot"></span></span></span>
+            </span>
+           </span>
+          </span>
         </div>
       </div>
     </div>
@@ -2219,6 +2292,23 @@ const MOTIVATIONAL_QUOTES = [
 ];
 document.getElementById('quoteText').textContent =
   MOTIVATIONAL_QUOTES[Math.floor(Math.random() * MOTIVATIONAL_QUOTES.length)];
+
+// রেসিং অ্যানিমেশনটা আগে `left` বদলে চলত, যেটা বারবার লেআউট রিক্যালকুলেট
+// (reflow) করাতো — এখন GPU-ফ্রেন্ডলি `transform: translateX()` ব্যবহার করা
+// হচ্ছে, কিন্তু transform-এর শতাংশ সবসময় এলিমেন্টের নিজের সাইজের ভিত্তিতে
+// হিসেব হয় (প্যারেন্টের না), তাই ঠিক আগের মতো দূরত্ব বজায় রাখতে ট্র্যাকের
+// আসল পিক্সেল-প্রস্থ মেপে একটা CSS ভ্যারিয়েবলে (--race-track-w) রেখে দিচ্ছি।
+(function setupRaceTrackWidthVar(){
+  const track = document.querySelector('.race-track');
+  if(!track) return;
+  const setWidthVar = ()=> track.style.setProperty('--race-track-w', track.getBoundingClientRect().width + 'px');
+  if('ResizeObserver' in window){
+    new ResizeObserver(setWidthVar).observe(track);
+  } else {
+    setWidthVar();
+    window.addEventListener('resize', setWidthVar);
+  }
+})();
 
 initStudent();
 
