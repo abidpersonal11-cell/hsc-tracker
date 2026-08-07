@@ -1992,15 +1992,20 @@ function renderTimerDisplay(){
 }
 
 // Flushes study-seconds accumulated since the last flush point into Firebase.
+//
+// [ফিক্স] আগে এখানে elapsed = Date.now() - lastAccountedAt হিসাব হতো, যেটা টাইমার
+// সত্যিকারে চলছিল কিনা তা যাচাই করত না — ফোন/ব্রাউজার অনেকক্ষণ বন্ধ/সাসপেন্ড
+// থেকে আবার খোলা হলে (timerEndAt পার হয়ে যাওয়ার পরেও) পুরো ফাঁকা সময়টাই
+// "পড়াশোনা" হিসেবে যোগ হয়ে যেত — এটাই ভুতুড়ে ২২ ঘণ্টার বাগের কারণ ছিল।
+// এখন থেকে টাইমার চললে elapsed কখনোই timerEndAt-এর বেশি (অর্থাৎ মূলত
+// timerTotalSeconds-এর বেশি) হতে পারবে না।
 function flushSessionElapsed(){
   if(lastAccountedAt == null) return;
-  // myRef তৈরি না হওয়া পর্যন্ত (যেমন অ্যাপ সবে খোলা হয়েছে, auth এখনো রেডি হয়নি)
-  // এখানেই থেমে যাও — lastAccountedAt এগিয়ে না দিয়ে, যাতে এই সময়টুকু হারিয়ে না যায়।
-  // myRef রেডি হওয়ার পর startSync() নিজে থেকেই আবার flushSessionElapsed() ডাকবে।
   if(!myRef) return;
-  const elapsed = Math.round((Date.now() - lastAccountedAt)/1000);
+  const cutoff = (timerRunning && timerEndAt) ? Math.min(Date.now(), timerEndAt) : Date.now();
+  const elapsed = Math.round((cutoff - lastAccountedAt)/1000);
   if(elapsed > 0){ addStudySeconds(elapsed); }
-  lastAccountedAt = Date.now();
+  lastAccountedAt = cutoff;
   if(timerRunning) saveTimerState();
 }
 
@@ -2312,19 +2317,44 @@ document.getElementById('quoteText').textContent =
 
 initStudent();
 
+// [ফিক্স] sw.js-এ cache-name ভার্সন বাড়ালেও যদি GitHub Pages/ব্রাউজার sw.js
+// ফাইলটাকেই ক্যাশ করে ফেলে, নতুন কোড ধরা পড়ে না। রেজিস্ট্রেশন URL-এ একটা
+// ভার্সন-নাম্বার যোগ করা হচ্ছে — প্রতিবার নতুন কিছু ডিপ্লয় করলে এই নাম্বারটা
+// বাড়িয়ে দাও (sw.js-এর CACHE_NAME-এর সাথে মিলিয়ে), তাহলে ব্রাউজার এটাকে
+// সম্পূর্ণ নতুন রিসোর্স হিসেবে ধরবে ও পুরনো CDN ক্যাশ এড়িয়ে নতুন sw.js আনবে।
+const SW_VERSION = 'v5';
+
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('./sw.js').catch(err=>console.error('SW failed:', err));
+    navigator.serviceWorker.register('./sw.js?v=' + SW_VERSION).catch(err=>console.error('SW failed:', err));
   });
 
   // When a new service worker (new code version) takes control of this page,
   // reload automatically so the installed "app" always shows the latest UI
   // instead of a stale cached copy.
+  //
+  // [ফিক্স] টাইমার চলা অবস্থায় সাথে সাথে reload করলে Firebase-এ পাঠানো কোনো
+  // write (যেমন addStudySeconds-এর transaction) মাঝপথে কাটা পড়ে যেতে পারত,
+  // যেটাই "আজকের পড়া গায়েব হওয়া" বাগের সম্ভাব্য কারণ। এখন টাইমার চলাকালীন
+  // reload আটকে রাখা হয় — pending ডেটা ফ্লাশ ও পজ হওয়ার পরই রিলোড হবে।
   let hasReloadedForUpdate = false;
   navigator.serviceWorker.addEventListener('controllerchange', ()=>{
     if(hasReloadedForUpdate) return;
-    hasReloadedForUpdate = true;
-    window.location.reload();
+    const doReload = ()=>{
+      hasReloadedForUpdate = true;
+      window.location.reload();
+    };
+    if(timerRunning){
+      flushSessionElapsed();
+      const waitForPause = setInterval(()=>{
+        if(!timerRunning){
+          clearInterval(waitForPause);
+          doReload();
+        }
+      }, 3000);
+    } else {
+      doReload();
+    }
   });
 
   // Actively check for a newer sw.js every time the app is opened/foregrounded.
