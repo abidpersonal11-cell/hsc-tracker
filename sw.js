@@ -1,7 +1,14 @@
-// v4: actually caches the external assets (fonts + Firebase SDK scripts) needed
-// for the app to run offline, not just the local manifest/icons. Also fixes a
-// bug where the "cache-first" branch never stored newly-fetched files.
-const CACHE_NAME = 'hsc-tracker-shell-v4';
+// v5: fixes two remaining staleness issues from v4.
+//  1. `fetch(event.request)` for HTML pages could still be silently answered
+//     from the *browser's own* HTTP cache (not just this Cache Storage),
+//     which meant "network-first" wasn't always truly hitting the network.
+//     Now uses { cache: 'no-store' } to force a real network round-trip.
+//  2. CACHE_NAME bumped so old cached entries are dropped on activate.
+// Also: register this file with a "?v=" query string from index.html on every
+// deploy (see SW_VERSION there) — GitHub Pages' CDN can itself cache sw.js for
+// a few minutes, so without a changing URL the browser may never notice a new
+// version of this file exists at all.
+const CACHE_NAME = 'hsc-tracker-shell-v5';
 const SHELL_FILES = [
   './manifest.json',
   './icon-192.png',
@@ -54,11 +61,15 @@ self.addEventListener('fetch', (event) => {
 
   // Network-first for the page itself (index.html / navigations), so code
   // changes show up immediately on next load instead of serving a stale
-  // cached copy. Falls back to cache only if there's no network (offline).
+  // cached copy. `cache: 'no-store'` forces a real network hit instead of
+  // letting the browser's own HTTP cache silently answer this fetch — that
+  // was the gap that let old builds keep showing up after a deploy even
+  // though this handler already looked "network-first". Falls back to the
+  // Cache Storage copy only if there's genuinely no network (offline).
   const isHtmlRequest = event.request.mode === 'navigate' || url.endsWith('/index.html') || url.endsWith('.html');
   if (isHtmlRequest) {
     event.respondWith(
-      fetch(event.request)
+      fetch(event.request, { cache: 'no-store' })
         .then((res) => {
           const clone = res.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
