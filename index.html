@@ -1233,36 +1233,40 @@ function renderStudyHistory(){
 // Adds elapsed study seconds (from the timer) to today's running total (persisted permanently per date).
 // Streak only increases once per day, after 2+ hours (7200s) of tracked timer study that day.
 //
-// এটা transaction() দিয়ে করা হয় — read-then-write (লোকাল মান + sec, তারপর .update())
-// করলে যদি কখনো state.studyHistory মুহূর্তের জন্য পুরনো/ফাঁকা থাকে (যেমন পেজ সবে
-// রিলোড হয়েছে, ক্যাশ এখনো লোড হয়নি), তাহলে সার্ভারের আসল টোটাল ভুলবশত ছোট মান
-// দিয়ে ওভাররাইট (মুছে) হয়ে যেতে পারে — এটা ঠিক এই সমস্যাতেই আগে একবার সারাদিনের
-// পড়া ০ করে দিয়েছিল। transaction() সবসময় সার্ভারের *বর্তমান* মানের উপর ভিত্তি করে
-// যোগ করে (লোকাল state যা-ই থাকুক), আর অফলাইনে করা transaction অনলাইনে ফেরার পর
-// নিজে থেকেই সঠিকভাবে সার্ভারের আসল মানের সাথে মিলিয়ে নেয় — তাই এই বাগটা আর সম্ভব না।
+// [ফিক্স] আগে এখানে transaction() ব্যবহার হতো, কিন্তু Firebase-এর নিজস্ব ডকুমেন্টেশন
+// অনুযায়ীই transaction()-এর জন্য সার্ভারের সাথে একটা সরাসরি round-trip দরকার — এটা
+// অফলাইন-ক্যাপেবল অ্যাপের জন্য নির্ভরযোগ্য না। অফলাইনে থাকা অবস্থায় transaction()
+// "committed" হিসেবে কনফার্ম হতে পারে না, ফলে অনলাইনে ফেরার সাথে সাথে সার্ভারের
+// পুরনো (তোমার অফলাইনে-পড়া সময় ছাড়া) মানটাই myRef.on('value') লিসেনারের মাধ্যমে
+// ফিরে এসে লোকাল অপটিমিস্টিক আপডেটকে ওভাররাইট করে দিত — এটাই অফলাইনে পড়া সময়
+// "গায়েব" হয়ে যাওয়ার আসল কারণ ছিল।
+//
+// এখন প্লেইন .set() ব্যবহার করা হচ্ছে (ইনক্রিমেন্ট না, পুরো নতুন টোটাল লেখা হয়) —
+// এটা অফলাইনেও সাথে সাথে লোকালি queue ও প্রতিফলিত হয়, এবং অনলাইনে ফিরলে নিজে
+// থেকেই সার্ভারে সিঙ্ক হয়ে যায়, কোনো round-trip-এর অপেক্ষা ছাড়াই। এই অ্যাপে যেহেতু
+// একই অ্যাকাউন্টে একসাথে দুই ডিভাইস থেকে লেখাই এমনিতে আটকানো (এক ডিভাইসেই অ্যাকাউন্ট
+// আটকে থাকে), transaction-এর "concurrent write protection" আসলে এখানে দরকারও ছিল না।
 function addStudySeconds(sec){
   if(!myRef || sec <= 0) return;
   const today = todayStr();
 
-  // শুধু UI-তে সাথে সাথে দেখানোর জন্য (optimistic) — সোর্স অফ ট্রুথ নিচের transaction।
   const hist = Object.assign({}, state.studyHistory || {});
   hist[today] = (hist[today] || 0) + sec;
   state.studyHistory = hist;
   renderStreak();
   saveLocalCache();
 
-  myRef.child('studyHistory/' + today).transaction(current => (current || 0) + sec)
-    .then(result=>{
-      if(!result.committed) return;
-      const confirmedTotal = result.snapshot.val() || 0;
-      if(confirmedTotal >= 7200 && state.streak.lastDate !== today){
+  const newTotal = hist[today];
+  myRef.child('studyHistory/' + today).set(newTotal)
+    .then(()=>{
+      if(newTotal >= 7200 && state.streak.lastDate !== today){
         const newStreak = computeNewStreak(state.streak);
         state.streak = newStreak;
         renderStreak();
         myRef.update({ streak: newStreak });
       }
     })
-    .catch(err=> console.error('study time transaction failed', err));
+    .catch(err=> console.error('study time save failed', err));
 }
 
 function syncLeaderboardEntry(){
