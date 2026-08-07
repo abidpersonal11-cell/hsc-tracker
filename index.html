@@ -1348,7 +1348,27 @@ function startSync(){
       state.subjects = migrated;
       state.examDate = val.examDate || '2027-07-01';
       state.streak = val.streak || {count:0, lastDate:null};
-      state.studyHistory = val.studyHistory || {};
+
+      // [ফিক্স] সার্ভার থেকে আসা studyHistory-কে সবসময় "সঠিক" ধরে নিয়ে blind
+      // overwrite করাটাই অফলাইনে-পড়া সময় হারিয়ে যাওয়ার আসল কারণ ছিল। মোবাইলে
+      // ট্যাব ব্যাকগ্রাউন্ডে সাসপেন্ড/রিলোড হলে Firebase-এর নিজের offline pending-write
+      // queue (মেমোরি-only, localStorage-এ থাকে না) হারিয়ে যেতে পারে, যদিও আমাদের
+      // নিজস্ব localStorage ক্যাশে (state.studyHistory, যেটা এতক্ষণে সেই ক্যাশ থেকেই
+      // লোড হয়ে আছে) আসল বড় সংখ্যাটা থেকে যায়। তাই এখন প্রতিটা তারিখে সার্ভার আর
+      // লোকাল — যেটা বড়, সেটাই রাখা হচ্ছে (পড়ার সময় কখনো কমতে পারে না, তাই max()
+      // নেওয়া সবসময় নিরাপদ), আর লোকাল বড় হলে সংশোধিত মানটা সার্ভারেও ফেরত লেখা হচ্ছে।
+      const incomingHistory = val.studyHistory || {};
+      const mergedHistory = Object.assign({}, incomingHistory);
+      let historyNeedsCorrection = false;
+      Object.keys(state.studyHistory || {}).forEach(date=>{
+        const localVal = state.studyHistory[date] || 0;
+        if(localVal > (mergedHistory[date] || 0)){
+          mergedHistory[date] = localVal;
+          historyNeedsCorrection = true;
+        }
+      });
+      state.studyHistory = mergedHistory;
+
       setSyncPill('ok','সেভড ✓');
       render();
       updateCountdown();
@@ -1359,6 +1379,9 @@ function startSync(){
       const newIds = migrated.map(s=>s.id).sort().join(',');
       if(oldIds !== newIds || hadStrayOpenFlag){
         myRef.update({ subjects: stripUiFlags(migrated), lastUpdated: Date.now() });
+      }
+      if(historyNeedsCorrection){
+        myRef.update({ studyHistory: mergedHistory });
       }
     }
   }, err=>{
